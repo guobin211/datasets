@@ -1,0 +1,76 @@
+# ===== 自定义忽略 =====
+.agents
+.codebuddy
+third-dataset
+cache
+
+# ===== IDE / 编辑器 =====
+.idea
+.vscode
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ===== 日志 =====
+*.log
+
+# ===== TypeScript / Node.js =====
+node_modules
+.next
+.nuxt
+.dist
+build
+dist
+*.tsbuildinfo
+.eslintcache
+.npm
+.pnpm-store
+.yarn/cache
+.yarn/install-state.gz
+
+# ===== Go =====
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+bin/
+coverage.out
+coverage.html
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+*.whl
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+.coverage
+htmlcov/
+.python-version
+
+# ===== Rust =====
+target/
+**/*.rs.bk
+
+# ===== 通用构建产物 =====
+*.wasm
+*.o
+*.a
+*.lib
