@@ -1,12 +1,11 @@
 import { createReadStream } from 'node:fs';
-import { mkdir, writeFile, appendFile } from 'node:fs/promises';
+import { access, mkdir, writeFile, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import {
   type Category,
   type Message,
-  CATEGORIES,
   OUTPUT_BASE,
 } from './types.ts';
 
@@ -29,8 +28,13 @@ export async function* readJsonl(path: string): AsyncGenerator<string> {
   }
 }
 
-/** 统计文件总行数（含空行）。 */
+/** 统计文件总行数（含空行）；文件不存在返回 0。 */
 export async function countLines(path: string): Promise<number> {
+  try {
+    await access(path);
+  } catch {
+    return 0;
+  }
   let n = 0;
   for await (const _ of readLines(path)) n++;
   return n;
@@ -38,20 +42,37 @@ export async function countLines(path: string): Promise<number> {
 
 // ---------- 输出辅助 ----------
 
-/** 为指定 source 在每个 category 目录下创建空 jsonl 文件（截断已有内容）。 */
-export async function ensureCategoryFiles(sourceName: string): Promise<void> {
-  for (const cat of CATEGORIES) {
-    await mkdir(join(OUTPUT_BASE, cat), { recursive: true });
-    await writeFile(join(OUTPUT_BASE, cat, `${sourceName}.jsonl`), '', 'utf8');
+/** 记录已初始化（截断）的 source/category 对，避免重复截断。 */
+const initializedCategories = new Set<string>();
+
+/** 重置某 source 的初始化状态，使下次写入重新截断文件（用于重复处理同一 source）。 */
+export function resetSourceInit(sourceName: string): void {
+  for (const key of initializedCategories) {
+    if (key.startsWith(`${sourceName}/`)) {
+      initializedCategories.delete(key);
+    }
   }
 }
 
-/** 向 source 的 category 桶追加一条 JSONL 记录。 */
+/** 首次写入某 source/category 时创建目录并截断旧文件；后续调用直接追加。 */
+async function ensureInitialized(
+  sourceName: string,
+  category: Category,
+): Promise<void> {
+  const key = `${sourceName}/${category}`;
+  if (initializedCategories.has(key)) return;
+  await mkdir(join(OUTPUT_BASE, category), { recursive: true });
+  await writeFile(join(OUTPUT_BASE, category, `${sourceName}.jsonl`), '', 'utf8');
+  initializedCategories.add(key);
+}
+
+/** 向 source 的 category 桶追加一条 JSONL 记录（首次写入时截断旧文件）。 */
 export async function appendCategoryRecord(
   sourceName: string,
   category: Category,
   record: unknown,
 ): Promise<void> {
+  await ensureInitialized(sourceName, category);
   await appendFile(
     join(OUTPUT_BASE, category, `${sourceName}.jsonl`),
     JSON.stringify(record) + '\n',

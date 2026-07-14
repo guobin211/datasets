@@ -17,7 +17,7 @@ third-dataset/<source>/*.jsonl   (多格式原始数据)
         │       │
         │       └──→ resource/categorized/<category>/<source>.jsonl
         │
-        └── cate-other-jsonl.ts  处理 5 种非标准格式（自动探测）
+        └── cate-other-jsonl.ts  处理 6 种非标准格式（自动探测）
                 │
                 └──→ resource/categorized/<category>/<source>.jsonl
 ```
@@ -39,7 +39,7 @@ third-dataset/<source>/*.jsonl   (多格式原始数据)
 
 `question-answer` 桶会额外执行 `filterForAnswer`：剔除 tool 消息、纯 tool_result 的 user 消息、以及 assistant 中的 `tool_use` blocks。
 
-## 支持的 5 种非标准格式（cate-other-jsonl.ts）
+## 支持的 6 种非标准格式（cate-other-jsonl.ts）
 
 | 格式标识 | 数据源 | 特征字段 |
 |---|---|---|
@@ -48,8 +48,9 @@ third-dataset/<source>/*.jsonl   (多格式原始数据)
 | `gpt_terminal` | gpt5.5-terminal | `task_name` + `prompt` + `solution` |
 | `codex_log` | gpt-5.5-agent | `type=session_meta` / `type=response_item` |
 | `claude_code_log` | claude-fable-5-claude-code / fable-5-claude-code-traces | `type=user/assistant`，按 `sessionId` 分组 |
+| `pi_traces` | Fable-5-traces/pi-traces | `type=session` / `type=message`，按 `session` 记录切分会话；`toolCall` 块规范化为 `tool_use`（`arguments` → `input`） |
 
-格式通过 `detectFormat()` 读取首行 JSON keys 自动识别。Claude Code log 和 Codex log 按 sessionId/response_item 分组为会话。该脚本使用 `any` 类型处理动态 JSON 数据。
+格式通过 `detectFormat()` 读取首行 JSON keys 自动识别。Claude Code log 和 Codex log 按 sessionId/response_item 分组为会话；pi_traces 按 `type=session` 记录顺序切分会话。该脚本使用 `any` 类型处理动态 JSON 数据。
 
 ## 常用命令
 
