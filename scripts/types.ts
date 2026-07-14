@@ -12,6 +12,7 @@ export type Format =
   | 'gpt_terminal'
   | 'codex_log'
   | 'claude_code_log'
+  | 'pi_traces'
   | 'unknown';
 
 /** 所有 Category 值，按固定顺序。 */

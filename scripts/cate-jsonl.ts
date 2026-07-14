@@ -11,8 +11,8 @@ import {
 } from './types.ts';
 import {
   emitCategoryRecord,
-  ensureCategoryFiles,
   readJsonl,
+  resetSourceInit,
 } from './utils.ts';
 
 interface Message {
@@ -31,8 +31,7 @@ async function processFile(
   const inputAbs = resolve(input);
   const sourceName = basename(dirname(inputAbs));
 
-  await ensureCategoryFiles(sourceName);
-
+  resetSourceInit(sourceName);
   const stats = { source: sourceName, skipped: 0, ...createStats() };
 
   let line = 0;

@@ -14,9 +14,9 @@ import {
 import {
   countLines,
   emitCategoryRecord,
-  ensureCategoryFiles,
   readJsonl,
   readLines,
+  resetSourceInit,
 } from './utils.ts';
 
 interface ParsedRecord {
@@ -281,6 +281,65 @@ function parseGptTerminal(rec: any, line: number): ParsedRecord | null {
   return { messages, line };
 }
 
+// ---------- format 7: pi_traces (Fable-5-traces/pi-traces) ----------
+
+/**
+ * pi-traces 会话日志：每条记录带 `type` 字段，按 `type=session` 切分会话。
+ * 仅 `type=message` 记录进入会话，`message.role` / `message.content` 为标准结构。
+ * 块类型 `toolCall` 规范化为 `tool_use`（`arguments` → `input`），以匹配分类逻辑。
+ */
+function normalizePiBlocks(content: unknown): unknown {
+  if (!Array.isArray(content)) return content;
+  return content.map((b: any) => {
+    if (typeof b !== 'object' || b === null) return b;
+    if (b.type === 'toolCall') {
+      return { type: 'tool_use', name: b.name ?? '', input: b.arguments ?? '' };
+    }
+    return b;
+  });
+}
+
+async function parsePiTraces(filePath: string): Promise<ParsedRecord[]> {
+  const results: ParsedRecord[] = [];
+  let currentSid: string | null = null;
+  let currentMessages: any[] = [];
+
+  const flush = (): void => {
+    if (currentSid !== null && currentMessages.length > 0) {
+      results.push({
+        messages: currentMessages,
+        line: 0,
+        extra: { session: currentSid },
+      });
+    }
+    currentMessages = [];
+  };
+
+  for await (const raw of readJsonl(filePath)) {
+    let rec: any;
+    try {
+      rec = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    const t = rec.type;
+    if (t === 'session') {
+      flush();
+      currentSid = rec.id ?? null;
+    } else if (t === 'message') {
+      const msg = rec.message;
+      if (typeof msg === 'object' && msg !== null) {
+        const content = normalizePiBlocks(msg.content);
+        if (content != null) {
+          currentMessages.push({ role: msg.role, content });
+        }
+      }
+    }
+  }
+  flush();
+  return results;
+}
+
 // ---------- format detection ----------
 
 async function detectFormat(filePath: string): Promise<Format> {
@@ -299,6 +358,9 @@ async function detectFormat(filePath: string): Promise<Format> {
       return 'gpt_terminal';
     }
     if (t === 'session_meta' || t === 'response_item') return 'codex_log';
+    if (t === 'session' || t === 'model_change' || t === 'thinking_level_change') {
+      return 'pi_traces';
+    }
     if (
       t === 'custom-title' ||
       t === 'ai-title' ||
@@ -327,8 +389,7 @@ async function processFile(filePath: string): Promise<CategoryStats> {
   const fmt = await detectFormat(abs);
   console.log(`source: ${source}  format: ${fmt}`);
 
-  await ensureCategoryFiles(source);
-
+  resetSourceInit(source);
   const stats = createStats();
 
   if (fmt === 'claude_code_log') {
@@ -340,6 +401,13 @@ async function processFile(filePath: string): Promise<CategoryStats> {
     }
   } else if (fmt === 'codex_log') {
     const records = await parseCodexLog(abs);
+    stats.lines = await countLines(abs);
+    for (const r of records) {
+      await emitCategoryRecord(source, r.messages, 0, r.extra);
+      stats.records++;
+    }
+  } else if (fmt === 'pi_traces') {
+    const records = await parsePiTraces(abs);
     stats.lines = await countLines(abs);
     for (const r of records) {
       await emitCategoryRecord(source, r.messages, 0, r.extra);
@@ -399,12 +467,13 @@ Detects format and categorizes non-standard JSONL into:
   question-answer-tool-call- single-turn: user + answer + tool calls
   question-multi           - multi-turn: full conversation
 
-Supports 5 formats (auto-detected from first record):
+Supports 6 formats (auto-detected from first record):
   gpt_distilled    - GPT_5.5_Distilled: text + user/assistant tags
   fable_traces     - Fable-5-traces: context + cot + output
   gpt_terminal     - gpt5.5-terminal: task_name + prompt + solution
   codex_log        - gpt-5.5-agent: Codex response_item session logs
   claude_code_log  - claude-fable-5-claude-code: Claude Code session logs
+  pi_traces        - Fable-5-traces/pi-traces: type=session/message session logs
 
 Outputs JSONL to ${OUTPUT_BASE}/<category>/<source>.jsonl where <source>
 is the parent directory name of the input file.`);
