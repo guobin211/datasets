@@ -281,7 +281,7 @@ function parseGptTerminal(rec: any, line: number): ParsedRecord | null {
   return { messages, line };
 }
 
-// ---------- format 7: pi_traces (Fable-5-traces/pi-traces) ----------
+// ---------- format 7: pi_traces (fable-5-traces/pi-traces) ----------
 
 /**
  * pi-traces 会话日志：每条记录带 `type` 字段，按 `type=session` 切分会话。
@@ -468,12 +468,12 @@ Detects format and categorizes non-standard JSONL into:
   question-multi           - multi-turn: full conversation
 
 Supports 6 formats (auto-detected from first record):
-  gpt_distilled    - GPT_5.5_Distilled: text + user/assistant tags
-  fable_traces     - Fable-5-traces: context + cot + output
-  gpt_terminal     - gpt5.5-terminal: task_name + prompt + solution
-  codex_log        - gpt-5.5-agent: Codex response_item session logs
+  gpt_distilled    - gpt-5-5-distilled: text + user/assistant tags
+  fable_traces     - fable-5-traces: context + cot + output
+  gpt_terminal     - gpt-5-5-terminal: task_name + prompt + solution
+  codex_log        - gpt-5-5-agent: Codex response_item session logs
   claude_code_log  - claude-fable-5-claude-code: Claude Code session logs
-  pi_traces        - Fable-5-traces/pi-traces: type=session/message session logs
+  pi_traces        - fable-5-traces/pi-traces: type=session/message session logs
 
 Outputs JSONL to ${OUTPUT_BASE}/<category>/<source>.jsonl where <source>
 is the parent directory name of the input file.`);

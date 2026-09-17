@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * 从分类产物目录（默认 resource/categorized/question-answer）提取单轮问答，输出 CSV。
+ * 从分类产物目录（默认 training/data/categorized/question-answer）提取单轮问答，输出 CSV。
  *
  * 输出列：question, model1, answer1（--with-source 时追加 source_file）。
  * 默认按输入文件拆分输出，每个 jsonl 对应 --out-dir/<source>.csv；
@@ -345,8 +345,8 @@ line), where <slug> is the source name lowercased with non-alphanumeric
 characters collapsed to '-'. Pass --out to merge into a single CSV instead.
 
 Options:
-  --dir <path>        输入目录 (default: resource/categorized/question-answer)
-  --out-dir <path>    拆分输出目录，每个源文件一个 csv (default: resource/qa-csv)
+  --dir <path>        输入目录 (default: training/data/categorized/question-answer)
+  --out-dir <path>    拆分输出目录，每个源文件一个 csv (default: evaluation/qa-csv)
   --out <path>        合并输出为单个 CSV；指定后忽略 --out-dir
   --file <name>       只处理指定文件，可重复；默认处理目录下全部 .jsonl
   --limit <n>         每个文件最多写入 n 条 (default: 0 = 不限)
@@ -430,7 +430,7 @@ async function runSplit(files: string[], options: Options): Promise<number> {
 
 /** 所有输入文件合并输出到一个 CSV。 */
 async function runMerged(files: string[], options: Options): Promise<number> {
-  const outPath = resolve(options.out ?? 'q_a.csv');
+  const outPath = resolve(options.out ?? 'qa.csv');
   const stream = await openCsv(outPath, options);
   const sink: CsvSink = { stream, seen: new Set<string>() };
   let total = 0;
@@ -451,8 +451,8 @@ async function runMerged(files: string[], options: Options): Promise<number> {
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
-      dir: { type: 'string', default: 'resource/categorized/question-answer' },
-      'out-dir': { type: 'string', default: 'resource/qa-csv' },
+      dir: { type: 'string', default: 'training/data/categorized/question-answer' },
+      'out-dir': { type: 'string', default: 'evaluation/qa-csv' },
       out: { type: 'string' },
       file: { type: 'string', multiple: true, default: [] },
       limit: { type: 'string', default: '0' },
@@ -475,8 +475,8 @@ async function main(): Promise<void> {
   }
 
   const options: Options = {
-    dir: values.dir ?? 'resource/categorized/question-answer',
-    outDir: values['out-dir'] ?? 'resource/qa-csv',
+    dir: values.dir ?? 'training/data/categorized/question-answer',
+    outDir: values['out-dir'] ?? 'evaluation/qa-csv',
     out: values.out ?? null,
     files: values.file ?? [],
     limit: parseCount(values.limit ?? '0', '--limit'),

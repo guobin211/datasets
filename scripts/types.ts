@@ -24,7 +24,7 @@ export const CATEGORIES: Category[] = [
 ];
 
 /** 分类输出根目录。 */
-export const OUTPUT_BASE = 'resource/categorized';
+export const OUTPUT_BASE = 'training/data/categorized';
 
 /** 分类输出记录的标准结构。 */
 export interface CategoryRecord {
