@@ -1,2 +1,8 @@
+# 大文件统一走 Git LFS：仓库内只存指针，文件本体存远端
 *.jsonl filter=lfs diff=lfs merge=lfs -text
+*.csv   filter=lfs diff=lfs merge=lfs -text
+*.parquet filter=lfs diff=lfs merge=lfs -text
+*.arrow  filter=lfs diff=lfs merge=lfs -text
+*.bin    filter=lfs diff=lfs merge=lfs -text
+*.h5     filter=lfs diff=lfs merge=lfs -text
 *.csv filter=lfs diff=lfs merge=lfs -text

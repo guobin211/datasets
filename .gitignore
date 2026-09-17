@@ -5,6 +5,12 @@
 third-dataset
 cache
 
+# ===== 数据构建产物（可由 scripts/ 重新生成，不入库）=====
+evaluation/qa-csv/
+evaluation/eval-dataset-full.csv
+evaluation/eval-dataset-50k.csv
+evaluation/eval-dataset-6k.csv
+
 # ===== IDE / 编辑器 =====
 .idea
 .vscode
