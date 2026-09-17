@@ -15,16 +15,16 @@ third-dataset/<source>/*.jsonl   (多格式原始数据)
         │
         ├── cate-jsonl.ts         处理标准 messages 格式（Claude/OpenAI distills）
         │       │
-        │       └──→ resource/categorized/<category>/<source>.jsonl
+        │       └──→ training/data/categorized/<category>/<source>.jsonl
         │
         └── cate-other-jsonl.ts  处理 6 种非标准格式（自动探测）
                 │
-                └──→ resource/categorized/<category>/<source>.jsonl
+                └──→ training/data/categorized/<category>/<source>.jsonl
 ```
 
 **关键约定**：
 - `merge.jsonl` 是每个 source 目录合并后的中间产物（已加入 `.gitignore` 的 `third-dataset/` 下）
-- `resource/categorized/<category>/<source>.jsonl` 中 `<source>` = 输入文件父目录名
+- `training/data/categorized/<category>/<source>.jsonl` 中 `<source>` = 输入文件父目录名
 - 每条输出记录包含 `{ messages, source_file, line, category }` 字段
 - `question` 桶对每条记录都输出（仅保留用户真实提问，过滤 tool_result）
 - 其他三个桶按会话特征二选一输出：multi-turn → `question-multi`；单轮带工具 → `question-answer-tool-call`；单轮无工具 → `question-answer`
@@ -43,12 +43,12 @@ third-dataset/<source>/*.jsonl   (多格式原始数据)
 
 | 格式标识 | 数据源 | 特征字段 |
 |---|---|---|
-| `gpt_distilled` | GPT_5.5_Distilled | `text` + `quality_score`，含 `<\|user\|>` / `<\|assistant\|>` 标签 |
-| `fable_traces` | Fable-5-traces | `context` + `cot` + `output` |
-| `gpt_terminal` | gpt5.5-terminal | `task_name` + `prompt` + `solution` |
-| `codex_log` | gpt-5.5-agent | `type=session_meta` / `type=response_item` |
+| `gpt_distilled` | gpt-5-5-distilled | `text` + `quality_score`，含 `<\|user\|>` / `<\|assistant\|>` 标签 |
+| `fable_traces` | fable-5-traces | `context` + `cot` + `output` |
+| `gpt_terminal` | gpt-5-5-terminal | `task_name` + `prompt` + `solution` |
+| `codex_log` | gpt-5-5-agent | `type=session_meta` / `type=response_item` |
 | `claude_code_log` | claude-fable-5-claude-code / fable-5-claude-code-traces | `type=user/assistant`，按 `sessionId` 分组 |
-| `pi_traces` | Fable-5-traces/pi-traces | `type=session` / `type=message`，按 `session` 记录切分会话；`toolCall` 块规范化为 `tool_use`（`arguments` → `input`） |
+| `pi_traces` | fable-5-traces/pi-traces | `type=session` / `type=message`，按 `session` 记录切分会话；`toolCall` 块规范化为 `tool_use`（`arguments` → `input`） |
 
 格式通过 `detectFormat()` 读取首行 JSON keys 自动识别。Claude Code log 和 Codex log 按 sessionId/response_item 分组为会话；pi_traces 按 `type=session` 记录顺序切分会话。该脚本使用 `any` 类型处理动态 JSON 数据。
 
@@ -72,7 +72,31 @@ tsx scripts/cate-jsonl.ts third-dataset/<source>/merge.jsonl [more.jsonl ...]
 
 # 3b. 分类非标准格式（自动探测格式）
 tsx scripts/cate-other-jsonl.ts third-dataset/<source>/merge.jsonl [more.jsonl ...]
+
+# 4. 把 evaluation/qa-csv/ 的多份单模型 Q&A 合并为宽表评测集
+#    （大文件需加大堆内存，否则 OOM）
+NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
+  --out evaluation/eval-dataset-6k.csv,evaluation/eval-dataset-full.csv \
+  --limit 6000,0
 ```
+
+## 评测集构建（build-eval-csv.ts）
+
+将 `evaluation/qa-csv/*.csv`（每份列为 `question, model1, answer1`，一个文件一个模型）
+合并为一份宽表：`question, context, answer-<model>...`，每行一个 question，
+各模型答案填入对应列，无答案留空。当前 16 列（context 数据源未提供，恒空）。
+
+- `--out` 逗号分隔可一次产出多个文件，`--limit` 与其一一对应（0/省略 = 全量）
+- 排序按「覆盖模型数降序」，因此多个输出是**嵌套子集**：小文件是大文件的高质量前缀
+- `MODEL_MAP` 控制 model1 → 列名映射；置 `null` 丢弃该数据源（当前丢弃 `-home-*` 噪音）
+- `MODEL_ORDER` 控制列顺序；其中的占位模型（glm-5.3 / kimi-2.7 / hy-4 / minimax-3）
+  暂无数据源，输出恒空，补数据时只需新增 CSV + 一行映射
+- 同一 question 同一模型列保留首个答案，保证结果确定
+
+当前模型列：claude-distills, claude-fable-5, claude-mythos, opus-4.6, opus-4.6-4.7,
+opus-4.8, gpt-5.5, fable-5, pi, claude-mixed, glm-5.3, kimi-2.7, hy-4, minimax-3
+
+产物：`evaluation/eval-dataset-6k.csv` (10M) / `-50k.csv` (224M) / `-full.csv` (655M, 156663 行)
 
 ## 技术栈
 
@@ -91,6 +115,7 @@ tsx scripts/cate-other-jsonl.ts third-dataset/<source>/merge.jsonl [more.jsonl .
 ## 目录约定
 
 - `third-dataset/` — 原始数据（gitignored，按数据源分子目录）
-- `resource/categorized/` — 处理产物，按 `<category>/<source>.jsonl` 组织
+- `training/data/categorized/` — 分类处理产物（微调输入），按 `<category>/<source>.jsonl` 组织
+- `evaluation/qa-csv/` 与 `evaluation/eval-dataset-*.csv` — 评测集（单模型 Q&A 与宽表）
 - `scripts/` — 所有可执行脚本（TS）
 - `.agents/cache/` — 临时脚本与中间产物（gitignored）

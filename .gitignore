@@ -1,6 +1,7 @@
 # ===== 自定义忽略 =====
 .agents
 .codebuddy
+.workbuddy
 third-dataset
 cache
 
