@@ -11,6 +11,9 @@ evaluation/eval-dataset-full.csv
 evaluation/eval-dataset-50k.csv
 evaluation/eval-dataset-6k.csv
 
+# ===== 外部开源数据集（体积大，不入库）=====
+open-datasets/
+
 # ===== IDE / 编辑器 =====
 .idea
 .vscode

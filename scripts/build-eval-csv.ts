@@ -146,6 +146,23 @@ function escapeCsvField(value: string): string {
 
 // ---------- 聚合 ----------
 
+/** 校验评测题目质量，过滤无效占位符、题解报告与残缺片段。 */
+function isValidEvalQuestion(text: string): boolean {
+  const q = text.trim();
+  if (q.length < 10) return false;
+  // 过滤纯占位符标题
+  if (/^#+\s*(problem|question|task|untitled)\s*$/i.test(q)) return false;
+  // 过滤题解报告与官方解法 (Editorial)
+  if (/^#+\s*editorial/i.test(q) || q.startsWith('## Editorial')) return false;
+  // 过滤仅包含评测机约束与时空限制的片段
+  if (/^#+\s*constraints\b/i.test(q)) return false;
+  // 过滤纯列表项/操作步骤且无明确问句与求解目标的残片
+  if (/^-\s+/m.test(q) && !/[?？]|what|how|why|find|calculate|which|who|where|when|prove|guess|determine/i.test(q)) {
+    return false;
+  }
+  return true;
+}
+
 interface Row {
   answers: Map<string, string>;
 }
@@ -186,7 +203,7 @@ async function collect(
         continue;
       }
       const question = (rec[colQuestion] ?? '').trim();
-      if (!question) {
+      if (!question || !isValidEvalQuestion(question)) {
         skipped++;
         continue;
       }
