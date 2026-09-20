@@ -1,15 +1,18 @@
 # ===== 自定义忽略 =====
+# 注意：以下两条必须锚定仓库根（带前导 /），否则会误伤 evaluation/third-dataset/ 等同名目录
 .agents
 .codebuddy
 .workbuddy
-third-dataset
-cache
+/third-dataset
+/cache
 
 # ===== 数据构建产物（可由 scripts/ 重新生成，不入库）=====
-evaluation/qa-csv/
-evaluation/eval-dataset-full.csv
-evaluation/eval-dataset-50k.csv
-evaluation/eval-dataset-6k.csv
+evaluation/third-dataset/qa-csv/
+evaluation/third-dataset/eval-dataset-full.csv
+evaluation/third-dataset/eval-dataset-50k.csv
+evaluation/third-dataset/eval-dataset-6k.csv
+evaluation/open-dataset/eval-simple-1000.csv
+evaluation/open-dataset/eval-simple-500.csv
 
 # ===== 外部开源数据集（体积大，不入库）=====
 open-datasets/
@@ -84,3 +87,4 @@ target/
 *.o
 *.a
 *.lib
+*.html

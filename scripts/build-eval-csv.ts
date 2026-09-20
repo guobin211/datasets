@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * 将 evaluation/qa-csv/ 下的多份单模型 Q&A CSV 合并为一份宽表评测集。
+ * 将 evaluation/third-dataset/qa-csv/ 下的多份单模型 Q&A CSV 合并为一份宽表评测集。
  *
- * 输入：evaluation/qa-csv/*.csv，每个文件列为 question, model1, answer1，
+ * 输入：evaluation/third-dataset/qa-csv/*.csv，每个文件列为 question, model1, answer1，
  *       每个文件对应一个模型（model1 列值恒定）。
  * 输出：question, context, answer-<model>... 每行一个 question，
  *       各模型的答案填入对应列；无答案的列留空。
@@ -12,7 +12,7 @@ import { readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
-const INPUT_DIR = 'evaluation/qa-csv';
+const INPUT_DIR = 'evaluation/third-dataset/qa-csv';
 
 /**
  * model1 原始值 -> 规范化模型名（用于 answer-<model> 列名）。
@@ -289,7 +289,7 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       dir: { type: 'string', default: INPUT_DIR },
-      out: { type: 'string', default: 'evaluation/eval-dataset.csv' },
+      out: { type: 'string', default: 'evaluation/third-dataset/eval-dataset.csv' },
       limit: { type: 'string', default: '' },
       'min-models': { type: 'string', default: '1' },
       help: { type: 'boolean', short: 'h' },
@@ -303,7 +303,7 @@ async function main(): Promise<void> {
   }
 
   const dir = values.dir ?? INPUT_DIR;
-  const outs = (values.out ?? 'evaluation/eval-dataset.csv')
+  const outs = (values.out ?? 'evaluation/third-dataset/eval-dataset.csv')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);

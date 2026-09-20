@@ -1,0 +1,415 @@
+{
+  "total_files": 23,
+  "total_rows": 318891,
+  "by_dataset": [
+    {
+      "file": "AlignBench.jsonl",
+      "rows": 683,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 1.09,
+      "categories": {
+        "chinese": 683
+      },
+      "task_types": {
+        "instruction_following": 683
+      },
+      "langs_top5": {
+        "zh": 683
+      }
+    },
+    {
+      "file": "CMMLU.jsonl",
+      "rows": 11917,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 6.29,
+      "categories": {
+        "chinese": 11917
+      },
+      "task_types": {
+        "mcq": 11917
+      },
+      "langs_top5": {
+        "zh": 11917
+      }
+    },
+    {
+      "file": "ChilleD_SVAMP.jsonl",
+      "rows": 1000,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 0.48,
+      "categories": {
+        "math": 1000
+      },
+      "task_types": {
+        "open_qa": 1000
+      },
+      "langs_top5": {
+        "en": 1000
+      }
+    },
+    {
+      "file": "ChineseSimpleQA.jsonl",
+      "rows": 3000,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 2.43,
+      "categories": {
+        "chinese": 3000
+      },
+      "task_types": {
+        "open_qa": 3000
+      },
+      "langs_top5": {
+        "zh": 3000
+      }
+    },
+    {
+      "file": "GAOKAO-Bench.jsonl",
+      "rows": 2811,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 6.5,
+      "categories": {
+        "chinese": 2811
+      },
+      "task_types": {
+        "mcq": 1547,
+        "open_qa": 1264
+      },
+      "langs_top5": {
+        "zh": 2477,
+        "en": 334
+      }
+    },
+    {
+      "file": "HalluQA.jsonl",
+      "rows": 900,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 0.82,
+      "categories": {
+        "chinese": 900
+      },
+      "task_types": {
+        "open_qa": 450,
+        "mcq": 450
+      },
+      "langs_top5": {
+        "zh": 900
+      }
+    },
+    {
+      "file": "MultiArith.jsonl",
+      "rows": 600,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 0.24,
+      "categories": {
+        "math": 600
+      },
+      "task_types": {
+        "open_qa": 600
+      },
+      "langs_top5": {
+        "en": 600
+      }
+    },
+    {
+      "file": "PolyMath.jsonl",
+      "rows": 9000,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 5.94,
+      "categories": {
+        "math": 9000
+      },
+      "task_types": {
+        "open_qa": 9000
+      },
+      "langs_top5": {
+        "ar": 500,
+        "bn": 500,
+        "de": 500,
+        "en": 500,
+        "es": 500
+      }
+    },
+    {
+      "file": "SafetyBench.jsonl",
+      "rows": 22870,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 14.97,
+      "categories": {
+        "chinese": 22870
+      },
+      "task_types": {
+        "mcq": 22870
+      },
+      "langs_top5": {
+        "zh": 11435,
+        "en": 11435
+      }
+    },
+    {
+      "file": "apple_gsm_symbolic.jsonl",
+      "rows": 12500,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 19.64,
+      "categories": {
+        "math": 12500
+      },
+      "task_types": {
+        "open_qa": 12500
+      },
+      "langs_top5": {
+        "en": 12500
+      }
+    },
+    {
+      "file": "aqua_rat.jsonl",
+      "rows": 97975,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 72.39,
+      "categories": {
+        "math": 97975
+      },
+      "task_types": {
+        "mcq": 97975
+      },
+      "langs_top5": {
+        "en": 97975
+      }
+    },
+    {
+      "file": "asdiv.jsonl",
+      "rows": 2305,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 1.11,
+      "categories": {
+        "math": 2305
+      },
+      "task_types": {
+        "open_qa": 2305
+      },
+      "langs_top5": {
+        "en": 2305
+      }
+    },
+    {
+      "file": "ceval-data.jsonl",
+      "rows": 13948,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 9.01,
+      "categories": {
+        "chinese": 13948
+      },
+      "task_types": {
+        "mcq": 13948
+      },
+      "langs_top5": {
+        "zh": 13948
+      }
+    },
+    {
+      "file": "gsm8k.jsonl",
+      "rows": 8792,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 6.62,
+      "categories": {
+        "math": 8792
+      },
+      "task_types": {
+        "open_qa": 8792
+      },
+      "langs_top5": {
+        "en": 8792
+      }
+    },
+    {
+      "file": "gsm_plus.jsonl",
+      "rows": 12952,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 18.47,
+      "categories": {
+        "math": 12952
+      },
+      "task_types": {
+        "open_qa": 12952
+      },
+      "langs_top5": {
+        "en": 12952
+      }
+    },
+    {
+      "file": "ifeval-data.jsonl",
+      "rows": 541,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 541,
+      "size_mb": 0.34,
+      "categories": {
+        "instruction": 541
+      },
+      "task_types": {
+        "instruction_following": 541
+      },
+      "langs_top5": {
+        "en": 541
+      }
+    },
+    {
+      "file": "livecodebench-data.jsonl",
+      "rows": 400,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 400,
+      "size_mb": 1194.66,
+      "categories": {
+        "code": 400
+      },
+      "task_types": {
+        "code_generation": 400
+      },
+      "langs_top5": {
+        "": 400
+      }
+    },
+    {
+      "file": "longbench-data.jsonl",
+      "rows": 8418,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 352.08,
+      "categories": {
+        "chinese": 8418
+      },
+      "task_types": {
+        "long_context": 8418
+      },
+      "langs_top5": {
+        "en": 7418,
+        "zh": 1000
+      }
+    },
+    {
+      "file": "math.jsonl",
+      "rows": 12500,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 2,
+      "size_mb": 12.73,
+      "categories": {
+        "math": 12500
+      },
+      "task_types": {
+        "open_qa": 12500
+      },
+      "langs_top5": {
+        "en": 12500
+      }
+    },
+    {
+      "file": "mathmist.jsonl",
+      "rows": 32611,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 57.77,
+      "categories": {
+        "math": 32611
+      },
+      "task_types": {
+        "mcq": 2266,
+        "open_qa": 30345
+      },
+      "langs_top5": {
+        "bn": 8358,
+        "en": 8358,
+        "am": 1445,
+        "ar": 1445,
+        "fi": 1445
+      }
+    },
+    {
+      "file": "mathqa.jsonl",
+      "rows": 37901,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 34.74,
+      "categories": {
+        "math": 37901
+      },
+      "task_types": {
+        "mcq": 37901
+      },
+      "langs_top5": {
+        "en": 37901
+      }
+    },
+    {
+      "file": "mmath.jsonl",
+      "rows": 3740,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 2.02,
+      "categories": {
+        "math": 3740
+      },
+      "task_types": {
+        "open_qa": 3740
+      },
+      "langs_top5": {
+        "ar": 374,
+        "en": 374,
+        "es": 374,
+        "fr": 374,
+        "ja": 374
+      }
+    },
+    {
+      "file": "swe-bench-data.jsonl",
+      "rows": 21527,
+      "bad_json": 0,
+      "question_empty": 0,
+      "answer_empty": 0,
+      "size_mb": 429.38,
+      "categories": {
+        "code": 21527
+      },
+      "task_types": {
+        "swe": 21527
+      },
+      "langs_top5": {
+        "": 21527
+      }
+    }
+  ]
+}
