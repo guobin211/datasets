@@ -73,16 +73,16 @@ tsx scripts/cate-jsonl.ts third-dataset/<source>/merge.jsonl [more.jsonl ...]
 # 3b. 分类非标准格式（自动探测格式）
 tsx scripts/cate-other-jsonl.ts third-dataset/<source>/merge.jsonl [more.jsonl ...]
 
-# 4. 把 evaluation/qa-csv/ 的多份单模型 Q&A 合并为宽表评测集
+# 4. 把 evaluation/third-dataset/qa-csv/ 的多份单模型 Q&A 合并为宽表评测集
 #    （大文件需加大堆内存，否则 OOM）
 NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
-  --out evaluation/eval-dataset-6k.csv,evaluation/eval-dataset-full.csv \
+  --out evaluation/third-dataset/eval-dataset-6k.csv,evaluation/third-dataset/eval-dataset-full.csv \
   --limit 6000,0
 ```
 
 ## 评测集构建（build-eval-csv.ts）
 
-将 `evaluation/qa-csv/*.csv`（每份列为 `question, model1, answer1`，一个文件一个模型）
+将 `evaluation/third-dataset/qa-csv/*.csv`（每份列为 `question, model1, answer1`，一个文件一个模型）
 合并为一份宽表：`question, context, answer-<model>...`，每行一个 question，
 各模型答案填入对应列，无答案留空。当前 16 列（context 数据源未提供，恒空）。
 
@@ -96,7 +96,7 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
 当前模型列：claude-distills, claude-fable-5, claude-mythos, opus-4.6, opus-4.6-4.7,
 opus-4.8, gpt-5.5, fable-5, pi, claude-mixed, glm-5.3, kimi-2.7, hy-4, minimax-3
 
-产物：`evaluation/eval-dataset-6k.csv` (10M) / `-50k.csv` (224M) / `-full.csv` (655M, 156663 行)
+产物：`evaluation/third-dataset/eval-dataset-6k.csv` (10M) / `-50k.csv` (224M) / `-full.csv` (655M, 156663 行)
 
 ## 技术栈
 
@@ -116,6 +116,6 @@ opus-4.8, gpt-5.5, fable-5, pi, claude-mixed, glm-5.3, kimi-2.7, hy-4, minimax-3
 
 - `third-dataset/` — 原始数据（gitignored，按数据源分子目录）
 - `training/data/categorized/` — 分类处理产物（微调输入），按 `<category>/<source>.jsonl` 组织
-- `evaluation/qa-csv/` 与 `evaluation/eval-dataset-*.csv` — 评测集（单模型 Q&A 与宽表）
+- `evaluation/third-dataset/qa-csv/` 与 `evaluation/third-dataset/eval-dataset-*.csv` — 评测集（单模型 Q&A 与宽表）
 - `scripts/` — 所有可执行脚本（TS）
 - `.agents/cache/` — 临时脚本与中间产物（gitignored）

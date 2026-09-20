@@ -1,0 +1,47 @@
+[
+  {
+    "dataset": "gsm8k",
+    "rows": 8792,
+    "size_mb": 6.62,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/gsm8k.jsonl",
+    "orig_rows": 8792,
+    "empty_answer_rows": 0
+  },
+  {
+    "dataset": "PolyMath",
+    "rows": 9000,
+    "size_mb": 5.94,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/PolyMath.jsonl",
+    "orig_rows": 9000,
+    "empty_answer_rows": 0
+  },
+  {
+    "dataset": "aqua_rat",
+    "rows": 97975,
+    "size_mb": 72.39,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/aqua_rat.jsonl",
+    "orig_rows": 97975,
+    "empty_answer_rows": 0
+  },
+  {
+    "dataset": "ChilleD_SVAMP",
+    "rows": 1000,
+    "size_mb": 0.48,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/ChilleD_SVAMP.jsonl",
+    "orig_rows": 1000,
+    "empty_answer_rows": 0
+  },
+  {
+    "dataset": "MultiArith",
+    "rows": 600,
+    "size_mb": 0.24,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/MultiArith.jsonl",
+    "orig_rows": 600,
+    "empty_answer_rows": 0
+  }
+]

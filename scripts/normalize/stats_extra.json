@@ -1,0 +1,23 @@
+[
+  {
+    "dataset": "aime-2025",
+    "rows": 30,
+    "size_mb": 0.03,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/aime-2025.jsonl"
+  },
+  {
+    "dataset": "aime-2026",
+    "rows": 30,
+    "size_mb": 0.02,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/aime-2026.jsonl"
+  },
+  {
+    "dataset": "gsm1k",
+    "rows": 1205,
+    "size_mb": 0.67,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/gsm1k.jsonl"
+  }
+]

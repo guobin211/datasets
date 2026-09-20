@@ -16,10 +16,13 @@ datasets/
 │   ├── scripts/              #   训练脚本（骨架）
 │   └── README.md
 │
-├── evaluation/               # 【evaluation】 评测阶段
-│   ├── qa-csv/               #   16 份单模型 Q&A CSV（question, model1, answer1）【构建产物，gitignored】
-│   └── eval-dataset-*.csv    #   16 列评测宽表（full 156,663 行 / 50k / 6k / 100 / sample）
-│                             #   大体积产物 gitignored，仅保留 100 / sample 两个小样例入库
+├── evaluation/               # 【evaluation】 评测阶段（按数据来源分两部分）
+│   ├── third-dataset/        #   源自 third-dataset/ 的自产数据
+│   │   ├── qa-csv/           #     16 份单模型 Q&A CSV（question, model1, answer1）【构建产物，gitignored】
+│   │   └── eval-dataset-*.csv#     16 列评测宽表（full 156,583 行 / 50k / 6k / 100 / sample）
+│   │                         #     大体积产物 gitignored，仅保留 100 / sample 两个小样例入库
+│   └── open-dataset/         #   源自 open-datasets/ 的开源数据集
+│       └── eval-simple-*.csv #     中英简单题（500 / 1000 条，gitignored）
 │
 ├── open-datasets/            # 【参考】外部开源数学数据集（gitignored，体积大不入库）
 │   ├── gsm8k/                #   OpenAI GSM8K（train 7,473 + test 1,319，parquet）
@@ -48,8 +51,10 @@ source            format                    evaluation              training
 third-dataset/ → merge.jsonl → cate-*.ts → training/data/categorized/ ──→ 微调
      │                                                    │
      └────────────────────── extract-qa-csv.ts ───────────↓
-                              evaluation/qa-csv/ → build-eval-csv.ts
-                                                → evaluation/eval-dataset-*.csv
+                    evaluation/third-dataset/qa-csv/ → build-eval-csv.ts
+                                          → evaluation/third-dataset/eval-dataset-*.csv
+
+open-datasets/ ──────────── build-simple-eval-csv.py ──→ evaluation/open-dataset/eval-simple-*.csv
 ```
 
 ## 四分类说明
@@ -58,7 +63,7 @@ third-dataset/ → merge.jsonl → cate-*.ts → training/data/categorized/ ─�
 |---|---|---|
 | **source** | 原始数据 | `third-dataset/` 13 个数据源（多格式 JSONL，gitignored） |
 | **format** | 归一化分类 | `scripts/merge-jsonl.ts` + `cate-jsonl.ts` + `cate-other-jsonl.ts`，产出 4 个分类桶 |
-| **evaluation** | 评测集 | `evaluation/qa-csv/` 单模型 Q&A + `evaluation/eval-dataset-*.csv` 宽表（按模型覆盖数降序，嵌套子集） |
+| **evaluation** | 评测集 | 按来源分两部分：`evaluation/third-dataset/`（自产：`qa-csv/` 单模型 Q&A + `eval-dataset-*.csv` 16 列宽表，按模型覆盖数降序，嵌套子集）、`evaluation/open-dataset/`（开源：`eval-simple-*.csv` 中英简单题） |
 | **training** | 训练阶段 | `training/data/categorized/`（微调输入，由 format 产出），`config/` 与 `scripts/` 为待补骨架 |
 
 ### 分类桶规则
@@ -80,7 +85,7 @@ tsx scripts/cate-other-jsonl.ts third-dataset/<source>/merge.jsonl  # 非标准�
 # evaluation：抽取单模型 Q&A + 构建评测宽表（大文件需加大堆内存）
 tsx scripts/extract-qa-csv.ts
 NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
-  --out evaluation/eval-dataset-6k.csv,evaluation/eval-dataset-full.csv --limit 6000,0
+  --out evaluation/third-dataset/eval-dataset-6k.csv,evaluation/third-dataset/eval-dataset-full.csv --limit 6000,0
 ```
 
 ## 外部开源数据集（open-datasets/）
@@ -99,6 +104,6 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
 ## Git 约定
 
 - 大文件统一走 Git LFS（见 `.gitattributes`）：`*.jsonl` / `*.csv` / `*.parquet` / `*.arrow` / `*.bin` / `*.h5` 均 LFS 跟踪，仓库内只存指针
-- 小样例例外：`evaluation/eval-dataset-100.csv`、`eval-dataset.sample.csv` 以普通文件入库，便于无 LFS 环境查看
-- 已 gitignore：`third-dataset/`、`open-datasets/`、`evaluation/qa-csv/`、大体积 `eval-dataset-*.csv`（构建产物可由 `scripts/` 重新生成）、`.agents/`、`.codebuddy/` 等
+- 小样例例外：`evaluation/third-dataset/eval-dataset-100.csv`、`evaluation/third-dataset/eval-dataset.sample.csv` 以普通文件入库，便于无 LFS 环境查看
+- 已 gitignore：`third-dataset/`、`open-datasets/`、`evaluation/third-dataset/qa-csv/`、大体积 `eval-dataset-*.csv`（构建产物可由 `scripts/` 重新生成）、`.agents/`、`.codebuddy/` 等
 - 历史中的大 CSV 已通过 `git filter-branch` + LFS 迁移移除，`.git` 体积已瘦身（3.1G → 1.8G）

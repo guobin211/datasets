@@ -346,7 +346,7 @@ characters collapsed to '-'. Pass --out to merge into a single CSV instead.
 
 Options:
   --dir <path>        输入目录 (default: training/data/categorized/question-answer)
-  --out-dir <path>    拆分输出目录，每个源文件一个 csv (default: evaluation/qa-csv)
+  --out-dir <path>    拆分输出目录，每个源文件一个 csv (default: evaluation/third-dataset/qa-csv)
   --out <path>        合并输出为单个 CSV；指定后忽略 --out-dir
   --file <name>       只处理指定文件，可重复；默认处理目录下全部 .jsonl
   --limit <n>         每个文件最多写入 n 条 (default: 0 = 不限)
@@ -452,7 +452,7 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       dir: { type: 'string', default: 'training/data/categorized/question-answer' },
-      'out-dir': { type: 'string', default: 'evaluation/qa-csv' },
+      'out-dir': { type: 'string', default: 'evaluation/third-dataset/qa-csv' },
       out: { type: 'string' },
       file: { type: 'string', multiple: true, default: [] },
       limit: { type: 'string', default: '0' },
@@ -476,7 +476,7 @@ async function main(): Promise<void> {
 
   const options: Options = {
     dir: values.dir ?? 'training/data/categorized/question-answer',
-    outDir: values['out-dir'] ?? 'evaluation/qa-csv',
+    outDir: values['out-dir'] ?? 'evaluation/third-dataset/qa-csv',
     out: values.out ?? null,
     files: values.file ?? [],
     limit: parseCount(values.limit ?? '0', '--limit'),

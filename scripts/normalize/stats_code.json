@@ -1,0 +1,151 @@
+[
+  {
+    "dataset": "swe-bench-data",
+    "rows": 21527,
+    "size_mb": 429.38,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/swe-bench-data.jsonl",
+    "orig_rows": 21527,
+    "empty_question_rows": 0,
+    "empty_answer_rows": 469,
+    "samples": [
+      {
+        "orig_id": "sqlfluff__sqlfluff-4764",
+        "repo": "sqlfluff/sqlfluff",
+        "question_head": "Enable quiet mode/no-verbose in CLI for use in pre-commit hook\nThere seems to be only an option to increase the level of verbosity when using SQLFluff [CLI](htt",
+        "answer_head": "diff --git a/src/sqlfluff/cli/commands.py b/src/sqlfluff/cli/commands.py\n--- a/src/sqlfluff/cli/commands.py\n+++ b/src/sq",
+        "keys_in_meta": [
+          "repo",
+          "base_commit",
+          "test_patch",
+          "hints_text",
+          "created_at",
+          "version",
+          "environment_setup_commit",
+          "FAIL_TO_PASS",
+          "PASS_TO_PASS"
+        ]
+      },
+      {
+        "orig_id": "sqlfluff__sqlfluff-2862",
+        "repo": "sqlfluff/sqlfluff",
+        "question_head": "fix keep adding new line on wrong place \n### Search before asking\n\n- [X] I searched the [issues](https://github.com/sqlfluff/sqlfluff/issues) and found no simil",
+        "answer_head": "diff --git a/src/sqlfluff/core/linter/common.py b/src/sqlfluff/core/linter/common.py\n--- a/src/sqlfluff/core/linter/comm",
+        "keys_in_meta": [
+          "repo",
+          "base_commit",
+          "test_patch",
+          "hints_text",
+          "created_at",
+          "version",
+          "environment_setup_commit",
+          "FAIL_TO_PASS",
+          "PASS_TO_PASS"
+        ]
+      },
+      {
+        "orig_id": "sqlfluff__sqlfluff-2336",
+        "repo": "sqlfluff/sqlfluff",
+        "question_head": "L026: Rule incorrectly flag column does not exist in `FROM` clause in an UPDATE statement.\n## Expected Behaviour\r\n\r\nL026 should not fail when a subquery in an U",
+        "answer_head": "diff --git a/src/sqlfluff/core/rules/analysis/select.py b/src/sqlfluff/core/rules/analysis/select.py\n--- a/src/sqlfluff/",
+        "keys_in_meta": [
+          "repo",
+          "base_commit",
+          "test_patch",
+          "hints_text",
+          "created_at",
+          "version",
+          "environment_setup_commit",
+          "FAIL_TO_PASS",
+          "PASS_TO_PASS"
+        ]
+      }
+    ]
+  },
+  {
+    "dataset": "livecodebench-data",
+    "rows": 400,
+    "size_mb": 1194.66,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/livecodebench-data.jsonl",
+    "orig_rows": 400,
+    "empty_question_rows": 0,
+    "empty_answer_rows": 400,
+    "samples": [
+      {
+        "orig_id": "1873_A",
+        "question_title": "A. Short Sort",
+        "difficulty": "easy",
+        "question_head": "There are three cards with letters $\\texttt{a}$, $\\texttt{b}$, $\\texttt{c}$ placed in a row in some order. You can do the following operation at most once: \n\n \n",
+        "answer": "(empty: no canonical solution field in dump)",
+        "n_public_tests": 1,
+        "starter_code_head": ""
+      },
+      {
+        "orig_id": "1873_B",
+        "question_title": "B. Good Kid",
+        "difficulty": "easy",
+        "question_head": "Slavic is preparing a present for a friend's birthday. He has an array $a$ of $n$ digits and the present will be the product of all these digits. Because Slavic",
+        "answer": "(empty: no canonical solution field in dump)",
+        "n_public_tests": 1,
+        "starter_code_head": ""
+      },
+      {
+        "orig_id": "1873_D",
+        "question_title": "D. 1D Eraser",
+        "difficulty": "easy",
+        "question_head": "You are given a strip of paper $s$ that is $n$ cells long. Each cell is either black or white. In an operation you can take any $k$ consecutive cells and make t",
+        "answer": "(empty: no canonical solution field in dump)",
+        "n_public_tests": 1,
+        "starter_code_head": ""
+      }
+    ]
+  },
+  {
+    "dataset": "ifeval-data",
+    "rows": 541,
+    "size_mb": 0.34,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/ifeval-data.jsonl",
+    "orig_rows": 541,
+    "empty_question_rows": 0,
+    "empty_answer_rows": 541,
+    "samples": [
+      {
+        "orig_id": 1000,
+        "question_head": "Write a 300+ word summary of the wikipedia page \"https://en.wikipedia.org/wiki/Raymond_III,_Count_of_Tripoli\". Do not use any commas and highlight at least 3 sections that has titles in markdown forma",
+        "instruction_id_list": [
+          "punctuation:no_comma",
+          "detectable_format:number_highlighted_sections",
+          "length_constraints:number_words"
+        ],
+        "meta_keys": [
+          "instruction_id_list",
+          "kwargs"
+        ]
+      },
+      {
+        "orig_id": 1001,
+        "question_head": "I am planning a trip to Japan, and I would like thee to write an itinerary for my journey in a Shakespearean style. You are not allowed to use any commas in your response.",
+        "instruction_id_list": [
+          "punctuation:no_comma"
+        ],
+        "meta_keys": [
+          "instruction_id_list",
+          "kwargs"
+        ]
+      },
+      {
+        "orig_id": 1005,
+        "question_head": "Write a resume for a fresh high school graduate who is seeking their first job. Make sure to include at least 12 placeholder represented by square brackets, such as [address], [name].",
+        "instruction_id_list": [
+          "detectable_content:number_placeholders"
+        ],
+        "meta_keys": [
+          "instruction_id_list",
+          "kwargs"
+        ]
+      }
+    ]
+  }
+]
