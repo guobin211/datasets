@@ -3,16 +3,35 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {
-  },
+  "scripts": {},
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@mdx-js/mdx": "^3.1.1",
     "@types/node": "^26.1.0",
+    "commander": "^15.0.0",
+    "csv-parse": "^7.0.2",
+    "dayjs": "^1.11.23",
+    "exceljs": "^4.4.0",
+    "fast-glob": "^3.3.3",
+    "fs-extra": "^11.4.0",
+    "gray-matter": "^4.0.3",
+    "json5": "^2.2.3",
+    "jsonc-parser": "^3.3.1",
+    "markdown-it": "^15.0.2",
+    "ndjson": "^2.0.0",
+    "p-limit": "^7.3.3",
+    "picocolors": "^1.1.1",
     "prettier": "^3.9.4",
     "tsx": "^4.23.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/ndjson": "^2.0.4",
+    "vitest": "^5.0.1"
   }
 }
