@@ -61,7 +61,7 @@ datasets/
 
 │
 
-├── scripts/                  # 处理流水线脚本（按职责分属 format / evaluation）
+├── scripts/                  # TS 处理流水线脚本（按职责分属 format / evaluation）
 
 │   ├── merge-jsonl.ts        #   【format】合并 source 目录 JSONL → merge.jsonl
 
@@ -72,6 +72,10 @@ datasets/
 │   ├── extract-qa-csv.ts     #   【evaluation】分类产物 → 单模型 Q\&A CSV
 
 │   └── build-eval-csv.ts     #   【evaluation】单模型 Q\&A → 16 列评测宽表
+
+│
+
+├── py/                       # Python 脚本：归一化 / 翻译 / 评测集构建（见 py/README.md）
 
 │
 
@@ -99,7 +103,10 @@ third-dataset/ → merge.jsonl → cate-\*.ts → training/data/categorized/ ─
 
 &#x20;                                         → evaluation/third-dataset/eval-dataset-\*.csv
 
-open-datasets/ ──────────── build-simple-eval-csv.py ──→ evaluation/open-dataset/eval-simple-\*.csv
+open-datasets/ ── py/normalize/（归一化 → 语种拆分）── py/eval/build_simple_eval_csv.py
+&#x20;                                        └── py/eval/build_formal_eval_csv.py
+&#x20;                                            → evaluation/open-dataset/eval-simple-\*.csv
+&#x20;                                            → evaluation/open-dataset/eval-formal.csv
 ```
 
 ## 四分类说明
@@ -120,6 +127,11 @@ open-datasets/ ──────────── build-simple-eval-csv.py ─
 * `real_user >= 2` → `question-multi`；有 tool 消息 → `question-answer-tool-call`；有 assistant → `question-answer`；其余仅进 `question`
 
 * 每条记录必入 `question` 桶；`question-answer` 桶剔除 tool 消息
+
+## 项目规则（脚本目录）
+
+* Python 脚本统一放在 `py/` 目录
+* TypeScript 脚本统一放在 `scripts/` 目录
 
 ## 常用命令
 

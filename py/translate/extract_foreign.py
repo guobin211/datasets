@@ -14,8 +14,8 @@ normalized/ 里 lang 字段有 3 种情况：
 
 用法
 ----
-  python3 scripts/translate/extract_foreign.py
-  python3 scripts/translate/extract_foreign.py --sample 100   # 分层抽小样
+  python3 py/translate/extract_foreign.py
+  python3 py/translate/extract_foreign.py --sample 100   # 分层抽小样
 """
 
 import argparse
@@ -26,30 +26,58 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-NORM_DIR = ROOT / 'open-datasets' / 'normalized'
-OUT_DIR = ROOT / 'open-datasets' / 'translated'
+NORM_DIR = ROOT / "open-datasets" / "normalized"
+OUT_DIR = ROOT / "open-datasets" / "translated"
 
-KEEP = ('zh', 'en')
+KEEP = ("zh", "en")
 
 # 各语言字符→token 的粗略换算（小语种 tokenizer 效率低，系数更保守）
 CHARS_PER_TOKEN = {
-    'ja': 1.0, 'ko': 1.2, 'zh': 1.0, 'th': 1.5, 'te': 2.0, 'am': 1.5,
-    'ar': 1.5, 'fa': 1.5, 'bn': 2.0, 'gu': 2.0, 'hi': 2.0, 'kk': 1.5,
+    "ja": 1.0,
+    "ko": 1.2,
+    "zh": 1.0,
+    "th": 1.5,
+    "te": 2.0,
+    "am": 1.5,
+    "ar": 1.5,
+    "fa": 1.5,
+    "bn": 2.0,
+    "gu": 2.0,
+    "hi": 2.0,
+    "kk": 1.5,
 }
 DEFAULT_CHARS_PER_TOKEN = 3.0  # 拉丁字母语言（fr/es/de/tr/sw/ha/lt/fi/...）
 
 LANG_NAME = {
-    'bn': '孟加拉语', 'ar': '阿拉伯语', 'fr': '法语', 'sw': '斯瓦希里语',
-    'am': '阿姆哈拉语', 'fi': '芬兰语', 'gu': '古吉拉特语', 'ha': '豪萨语',
-    'kk': '哈萨克语', 'lt': '立陶宛语', 'fa': '波斯语', 'tr': '土耳其语',
-    'es': '西班牙语', 'ja': '日语', 'ko': '韩语', 'pt': '葡萄牙语',
-    'th': '泰语', 'vi': '越南语', 'de': '德语', 'id': '印尼语',
-    'it': '意大利语', 'ms': '马来语', 'ru': '俄语', 'te': '泰卢固语',
+    "bn": "孟加拉语",
+    "ar": "阿拉伯语",
+    "fr": "法语",
+    "sw": "斯瓦希里语",
+    "am": "阿姆哈拉语",
+    "fi": "芬兰语",
+    "gu": "古吉拉特语",
+    "ha": "豪萨语",
+    "kk": "哈萨克语",
+    "lt": "立陶宛语",
+    "fa": "波斯语",
+    "tr": "土耳其语",
+    "es": "西班牙语",
+    "ja": "日语",
+    "ko": "韩语",
+    "pt": "葡萄牙语",
+    "th": "泰语",
+    "vi": "越南语",
+    "de": "德语",
+    "id": "印尼语",
+    "it": "意大利语",
+    "ms": "马来语",
+    "ru": "俄语",
+    "te": "泰卢固语",
 }
 
 # 无需翻译的答案：只由数字、数学符号、拉丁字母变量组成（如 '4/3'、'a=0.12, b=0.31'）。
 # 这类答案翻译与否不影响判分，翻了反而可能把变量名或数值改坏。
-TRANSLATION_FREE = re.compile(r'^[\s\d\.\,\-\+\\/\*\^\%\$\\{\}a-zA-Z_×÷≤≥≠≈∞π\s]+$')
+TRANSLATION_FREE = re.compile(r"^[\s\d\.\,\-\+\\/\*\^\%\$\\{\}a-zA-Z_×÷≤≥≠≈∞π\s]+$")
 
 # 非 ASCII 数字系统 → 阿拉伯数字。不归一化会导致判分必错：
 # 波斯语 '۱، ۳، ۵'（1,3,5）、古吉拉特 '૧૨૩'、孟加拉 '১২৩' 与模型输出的 ASCII 数字对不上。
@@ -78,68 +106,72 @@ def normalize_digits(text: str) -> str:
 
 def need_translate(text: str) -> bool:
     """答案为纯数字/数学表达式时不翻译。"""
-    t = str(text or '').strip()
+    t = str(text or "").strip()
     if not t:
         return False
     return not bool(TRANSLATION_FREE.match(t))
 
 
 def iter_foreign(norm_dir: Path):
-    for path in sorted(norm_dir.glob('*.jsonl')):
+    for path in sorted(norm_dir.glob("*.jsonl")):
         ds = path.stem
-        with path.open(encoding='utf-8') as fh:
+        with path.open(encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
                     continue
                 r = json.loads(line)
-                lang = r.get('lang') or ''
+                lang = r.get("lang") or ""
                 if not lang or lang in KEEP:
                     continue  # 空串 = 英文代码数据；zh/en = 已是目标语言
                 yield ds, r
 
 
 def to_record(ds: str, r: dict) -> dict:
-    meta = r.get('metadata') or {}
-    opts = r.get('options') or []
+    meta = r.get("metadata") or {}
+    opts = r.get("options") or []
     if isinstance(opts, str):
         try:
             opts = json.loads(opts)
         except json.JSONDecodeError:
             opts = []
     return {
-        'id': r.get('id') or '',
-        'source': ds,
-        'lang': r.get('lang') or '',
-        'task_type': r.get('task_type') or '',
-        'category': r.get('category') or '',
-        'question': normalize_digits(str(r.get('question') or '')),
-        'options': [normalize_digits(str(o)) for o in opts],
-        'answer': normalize_digits(str(r.get('answer') or '')),
-        'solution': normalize_digits(str(r.get('solution') or '')),
-        'context': normalize_digits(str(meta.get('context') or '')),
-        'answer_is_text': need_translate(r.get('answer')),
+        "id": r.get("id") or "",
+        "source": ds,
+        "lang": r.get("lang") or "",
+        "task_type": r.get("task_type") or "",
+        "category": r.get("category") or "",
+        "question": normalize_digits(str(r.get("question") or "")),
+        "options": [normalize_digits(str(o)) for o in opts],
+        "answer": normalize_digits(str(r.get("answer") or "")),
+        "solution": normalize_digits(str(r.get("solution") or "")),
+        "context": normalize_digits(str(meta.get("context") or "")),
+        "answer_is_text": need_translate(r.get("answer")),
     }
 
 
 def est_tokens(rec: dict) -> int:
-    lang = rec['lang']
+    lang = rec["lang"]
     cpt = CHARS_PER_TOKEN.get(lang, DEFAULT_CHARS_PER_TOKEN)
-    n = (len(rec['question']) + sum(len(o) for o in rec['options'])
-         + len(rec['solution']) + len(rec['context']))
-    if rec['answer_is_text']:
-        n += len(rec['answer'])
+    n = (
+        len(rec["question"])
+        + sum(len(o) for o in rec["options"])
+        + len(rec["solution"])
+        + len(rec["context"])
+    )
+    if rec["answer_is_text"]:
+        n += len(rec["answer"])
     return int(n / cpt)
 
 
 def main():
-    ap = argparse.ArgumentParser(description='抽取非中英待翻译队列')
-    ap.add_argument('--norm-dir', default=str(NORM_DIR))
-    ap.add_argument('--out-dir', default=str(OUT_DIR))
-    ap.add_argument('--sample', type=int, default=0, help='分层抽样条数（0=不抽样）')
-    ap.add_argument('--seed', default='translate-2026')
-    ap.add_argument('--price-in', type=float, default=0.15, help='输入 $/百万 token')
-    ap.add_argument('--price-out', type=float, default=0.6, help='输出 $/百万 token')
+    ap = argparse.ArgumentParser(description="抽取非中英待翻译队列")
+    ap.add_argument("--norm-dir", default=str(NORM_DIR))
+    ap.add_argument("--out-dir", default=str(OUT_DIR))
+    ap.add_argument("--sample", type=int, default=0, help="分层抽样条数（0=不抽样）")
+    ap.add_argument("--seed", default="translate-2026")
+    ap.add_argument("--price-in", type=float, default=0.15, help="输入 $/百万 token")
+    ap.add_argument("--price-out", type=float, default=0.6, help="输出 $/百万 token")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -148,41 +180,50 @@ def main():
     recs = [to_record(ds, r) for ds, r in iter_foreign(Path(args.norm_dir))]
 
     # ---- 统计 ----
-    by_lang = Counter(r['lang'] for r in recs)
-    by_ds = Counter(r['source'] for r in recs)
+    by_lang = Counter(r["lang"] for r in recs)
+    by_ds = Counter(r["source"] for r in recs)
     tok = sum(est_tokens(r) for r in recs)
-    chars = sum(len(r['question']) + sum(len(o) for o in r['options'])
-                + len(r['solution']) + len(r['context']) for r in recs)
+    chars = sum(
+        len(r["question"])
+        + sum(len(o) for o in r["options"])
+        + len(r["solution"])
+        + len(r["context"])
+        for r in recs
+    )
 
-    print(f'待翻译记录: {len(recs):,} 条 / {len(by_lang)} 种语言')
-    print(f'字符量: {chars:,}（不含纯数字答案）')
-    print(f'估算输入 token: {tok:,}')
-    print(f'估算成本: 输入 ${tok * args.price_in / 1e6:.2f} + '
-          f'输出 ${tok * 0.9 * args.price_out / 1e6:.2f} ≈ '
-          f'${tok * args.price_in / 1e6 + tok * 0.9 * args.price_out / 1e6:.2f}')
+    print(f"待翻译记录: {len(recs):,} 条 / {len(by_lang)} 种语言")
+    print(f"字符量: {chars:,}（不含纯数字答案）")
+    print(f"估算输入 token: {tok:,}")
+    print(
+        f"估算成本: 输入 ${tok * args.price_in / 1e6:.2f} + "
+        f"输出 ${tok * 0.9 * args.price_out / 1e6:.2f} ≈ "
+        f"${tok * args.price_in / 1e6 + tok * 0.9 * args.price_out / 1e6:.2f}"
+    )
     print()
-    print('按语言：')
+    print("按语言：")
     for lang, n in by_lang.most_common():
-        sub = [r for r in recs if r['lang'] == lang]
+        sub = [r for r in recs if r["lang"] == lang]
         t = sum(est_tokens(r) for r in sub)
-        print(f'  {lang} {LANG_NAME.get(lang, ""):8} {n:>7,} 条  '
-              f'token {t:>10,}  文本答案 {sum(1 for r in sub if r["answer_is_text"]):,}')
+        print(
+            f"  {lang} {LANG_NAME.get(lang, ''):8} {n:>7,} 条  "
+            f"token {t:>10,}  文本答案 {sum(1 for r in sub if r['answer_is_text']):,}"
+        )
     print()
-    print('按数据集：', dict(by_ds.most_common()))
+    print("按数据集：", dict(by_ds.most_common()))
 
     # ---- 写队列 ----
-    pending = out_dir / 'pending.jsonl'
-    with pending.open('w', encoding='utf-8') as fh:
+    pending = out_dir / "pending.jsonl"
+    with pending.open("w", encoding="utf-8") as fh:
         for r in recs:
-            fh.write(json.dumps(r, ensure_ascii=False) + '\n')
-    print(f'\n队列已写入: {pending}')
+            fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+    print(f"\n队列已写入: {pending}")
 
     # ---- 分层抽样小样：按语言配额，语言内按 source 再均衡 ----
     if args.sample:
         rng = random.Random(args.seed)
         by_lang_recs = defaultdict(list)
         for r in recs:
-            by_lang_recs[r['lang']].append(r)
+            by_lang_recs[r["lang"]].append(r)
         langs = sorted(by_lang_recs, key=lambda l: -len(by_lang_recs[l]))
         quota = {}
         base = args.sample // len(langs)
@@ -205,7 +246,7 @@ def main():
             # 语言内按 source 分层，避免小样全来自同一数据集
             by_src = defaultdict(list)
             for r in pool:
-                by_src[r['source']].append(r)
+                by_src[r["source"]].append(r)
             srcs = sorted(by_src)
             for k, s in enumerate(srcs):
                 rng.shuffle(by_src[s])
@@ -224,15 +265,17 @@ def main():
             sample.extend(picked)
 
         rng.shuffle(sample)
-        sp = out_dir / f'sample-{len(sample)}.jsonl'
-        with sp.open('w', encoding='utf-8') as fh:
+        sp = out_dir / f"sample-{len(sample)}.jsonl"
+        with sp.open("w", encoding="utf-8") as fh:
             for r in sample:
-                fh.write(json.dumps(r, ensure_ascii=False) + '\n')
+                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
         st = sum(est_tokens(r) for r in sample)
-        print(f'小样已写入: {sp}（{len(sample)} 条，'
-              f'覆盖 {len(set(r["lang"] for r in sample))} 种语言，'
-              f'估算 {st:,} token）')
+        print(
+            f"小样已写入: {sp}（{len(sample)} 条，"
+            f"覆盖 {len({r['lang'] for r in sample})} 种语言，"
+            f"估算 {st:,} token）"
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

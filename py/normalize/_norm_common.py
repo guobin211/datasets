@@ -27,40 +27,63 @@
   - LiveCodeBench：task_type=code_generation，question=题目陈述，answer=canonical solution 代码，
     metadata 放 starter_code/public_test_cases/private_test_cases/difficulty/tags。
 """
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
-ROOT = Path('/Users/guobin/tencent/datasets')
-OPEN = ROOT / 'open-datasets'
-OUT = OPEN / 'normalized'
+ROOT = Path(__file__).resolve().parents[2]
+OPEN = ROOT / "open-datasets"
+OUT = OPEN / "normalized"
 OUT.mkdir(parents=True, exist_ok=True)
 
 REQUIRED_KEYS = [
-    'id', 'dataset', 'category', 'task_type', 'lang', 'split',
-    'question', 'answer', 'options', 'solution',
-    'source_file', 'orig_id', 'metadata',
+    "id",
+    "dataset",
+    "category",
+    "task_type",
+    "lang",
+    "split",
+    "question",
+    "answer",
+    "options",
+    "solution",
+    "source_file",
+    "orig_id",
+    "metadata",
 ]
 
 
-def make_record(dataset: str, category: str, task_type: str,
-                question, answer, *,
-                options=None, solution=None, lang='', split='',
-                source_file='', orig_id='', metadata=None) -> dict:
+def make_record(
+    dataset: str,
+    category: str,
+    task_type: str,
+    question,
+    answer,
+    *,
+    options=None,
+    solution=None,
+    lang="",
+    split="",
+    source_file="",
+    orig_id="",
+    metadata=None,
+) -> dict:
     return {
-        'id': None,
-        'dataset': dataset,
-        'category': category,
-        'task_type': task_type,
-        'lang': lang or '',
-        'split': split or '',
-        'question': '' if question is None else str(question),
-        'answer': '' if answer is None else str(answer),
-        'options': list(options) if options else [],
-        'solution': '' if solution is None else str(solution),
-        'source_file': source_file,
-        'orig_id': '' if orig_id is None else str(orig_id),
-        'metadata': dict(metadata) if metadata else {},
+        "id": None,
+        "dataset": dataset,
+        "category": category,
+        "task_type": task_type,
+        "lang": lang or "",
+        "split": split or "",
+        "question": "" if question is None else str(question),
+        "answer": "" if answer is None else str(answer),
+        "options": list(options) if options else [],
+        "solution": "" if solution is None else str(solution),
+        "source_file": source_file,
+        "orig_id": "" if orig_id is None else str(orig_id),
+        "metadata": dict(metadata) if metadata else {},
     }
 
 
@@ -69,18 +92,23 @@ class JsonlWriter:
 
     def __init__(self, dataset: str):
         self.dataset = dataset
-        self.path = OUT / f'{dataset}.jsonl'
-        self._f = open(self.path, 'w', encoding='utf-8')
+        self.path = OUT / f"{dataset}.jsonl"
+        # 文件生命周期由本类管理：构造时打开，close() 显式关闭
+        self._f = open(self.path, "w", encoding="utf-8")  # noqa: SIM115
         self.n = 0
         self.skipped: dict[str, int] = {}
 
     def write(self, rec: dict) -> None:
         # 兜底：补齐所有必需键
         for k in REQUIRED_KEYS:
-            rec.setdefault(k, '' if k not in ('options', 'metadata') else (
-                [] if k == 'options' else {}))
-        rec['id'] = f"{self.dataset}-{self.n:06d}"
-        self._f.write(json.dumps(rec, ensure_ascii=False) + '\n')
+            rec.setdefault(
+                k,
+                ""
+                if k not in ("options", "metadata")
+                else ([] if k == "options" else {}),
+            )
+        rec["id"] = f"{self.dataset}-{self.n:06d}"
+        self._f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         self.n += 1
 
     def skip(self, reason: str) -> None:
@@ -90,28 +118,29 @@ class JsonlWriter:
         self._f.close()
         size_mb = self.path.stat().st_size / 1024 / 1024
         return {
-            'dataset': self.dataset,
-            'rows': self.n,
-            'size_mb': round(size_mb, 2),
-            'skipped': self.skipped,
-            'path': str(self.path),
+            "dataset": self.dataset,
+            "rows": self.n,
+            "size_mb": round(size_mb, 2),
+            "skipped": self.skipped,
+            "path": str(self.path),
         }
 
 
 def load_json_array(path: Path):
     """读 json 文件：可能是 [...], 也可能是 {key:[...]}/{example:[...]}。返回 list。"""
-    txt = open(path, encoding='utf-8', errors='replace').read()
+    with open(path, encoding="utf-8", errors="replace") as f:
+        txt = f.read()
     dec = json.JSONDecoder()
     data, _ = dec.raw_decode(txt.strip())
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
         # 常见：{keywords:..., example:[...]} 或 {...: [records]}
-        for k in ('example', 'examples', 'test', 'data', 'questions'):
+        for k in ("example", "examples", "test", "data", "questions"):
             if k in data and isinstance(data[k], list):
                 return data[k]
         # 退化：取第一个 list 值
         for v in data.values():
             if isinstance(v, list):
                 return v
-    raise ValueError(f'cannot find record list in {path}')
+    raise ValueError(f"cannot find record list in {path}")

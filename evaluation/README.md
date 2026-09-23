@@ -56,7 +56,7 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
 
 ```
 open-datasets/normalized/*.jsonl  (26 个基准 / 320,156 行)
-  → scripts/build-formal-eval-csv.py
+  → py/eval/build_formal_eval_csv.py
   → evaluation/open-dataset/eval-formal.csv  (27,916 行 / 42M)
 ```
 
@@ -89,12 +89,12 @@ open-datasets/normalized/*.jsonl  (26 个基准 / 320,156 行)
 重建：
 
 ```bash
-/Users/guobin/.workbuddy/binaries/python/envs/default/bin/python scripts/build-formal-eval-csv.py
+python3 py/eval/build_formal_eval_csv.py
 
 # 变体：允许 train 补足（数据量更大但有污染风险）
-python3 scripts/build-formal-eval-csv.py --split-policy test-first
+python3 py/eval/build_formal_eval_csv.py --split-policy test-first
 # 变体：不做配额，全量导出（约 22.9 万行，数学类占 70%+）
-python3 scripts/build-formal-eval-csv.py --no-cap
+python3 py/eval/build_formal_eval_csv.py --no-cap
 ```
 
 已知残留：589 组「前 80 字符相同」的近似题（gsm_plus 扰动变体、mathqa 相似题等），为源数据刻意设计的变体，非重复数据，评测鲁棒性时可利用。
@@ -105,7 +105,7 @@ python3 scripts/build-formal-eval-csv.py --no-cap
 
 ```
 open-datasets/PolyMath/{en,zh}/low.parquet  ┐
-open-datasets/gsm8k/main/test-*.parquet     ┴→ scripts/build-simple-eval-csv.py
+open-datasets/gsm8k/main/test-*.parquet     ┴→ py/eval/build_simple_eval_csv.py
                                               → evaluation/open-dataset/eval-simple-*.csv
 ```
 
@@ -122,7 +122,7 @@ open-datasets/gsm8k/main/test-*.parquet     ┴→ scripts/build-simple-eval-csv
 重建（依赖 `pyarrow`）：
 
 ```bash
-/Users/guobin/.workbuddy/binaries/python/envs/default/bin/python scripts/build-simple-eval-csv.py \
+python3 py/eval/build_simple_eval_csv.py \
   --out evaluation/open-dataset/eval-simple-500.csv --max-steps 3 --supplement 250
 ```
 
