@@ -1,6 +1,6 @@
-# 00 · 三仓库技术总览与选型建议
+# 00 · 四仓库技术总览与选型建议
 
-本文档用于在 `code-studio`、`open-context`、`zmax` 之间进行技术路线判断，并给出可复用模块的优先级建议。
+本文档用于在 `code-studio`、`open-context`、`zmax`、`teams-memory` 之间进行技术路线判断，并给出可复用模块的优先级建议。
 
 ## 1. 一页结论
 
@@ -20,18 +20,29 @@
 | Rust 组织 | 多 crate workspace（核心/基础设施/UI 面板/服务端） |
 | 典型场景 | 本地智能开发工具、可编排 Agent 客户端、插件化工作流 |
 
-## 架构版图（3 仓库）
+| 维度 | teams-memory |
+|---|---|
+| 产品形态 | 团队记忆/知识管理工具（CLI + SDK + 本地代理 + 远程服务 + Skills） |
+| 技术重心 | 记忆存储、语义检索（召回+重排）、共享权限、图谱、Graph RAG |
+| 语言/组织 | Node.js 22+ / TypeScript（pnpm monorepo）+ Python AI Sidecar |
+| 数据策略 | SurrealDB（元数据/关系）+ Qdrant（向量）+ Keyv/Redis（缓存） |
+| 典型场景 | 团队知识沉淀、Agent 记忆技能、代码库/RUM 搜索、语义检索产品 |
+
+## 架构版图（4 仓库）
 
 ```mermaid
 flowchart LR
   A[code-studio\nBackend First]
   B[open-context\nDesktop + AppBridge]
   C[zmax\ngpui + ACP + Local Server]
+  D[teams-memory\nNode/TS 记忆服务]
 
   A -->|服务端能力复用| B
   A -->|数据库/AI SDK模式| C
   B -->|HTTP/WS桥接经验| C
   C -->|ACP与CLI模式| B
+  D -->|CLI/SDK/Agent技能模式| C
+  D -->|检索与数据层经验| A
 ```
 
 ## 选型决策流程
@@ -41,16 +52,20 @@ flowchart TD
   Q1{目标是否是企业后端 API?}
   Q2{目标是否是本地 AI 工作台?}
   Q3{是否需要 ACP 多会话?}
+  Q4{目标是团队记忆/语义检索/知识管理?}
   R1[优先 code-studio]
   R2[优先 open-context]
   R3[优先 zmax]
+  R4[优先 teams-memory]
 
   Q1 -->|是| R1
   Q1 -->|否| Q2
   Q2 -->|是| Q3
-  Q2 -->|否| R1
+  Q2 -->|否| Q4
   Q3 -->|是| R3
   Q3 -->|否| R2
+  Q4 -->|是| R4
+  Q4 -->|否| R1
 ```
 
 ## 复用数据流（文档决策到方案落地）
@@ -133,6 +148,19 @@ docs 目录另含以下高价值专题，目前未在本文档集内提炼：
 | `picture-in-picture.md` / `record-to-test.md` | 画中画 / 录制转测试 |
 | `roadmap.md` | 路线图 |
 
+### 2.5 teams-memory
+
+- 架构：Node.js 22+ / TypeScript（pnpm monorepo）+ Python AI Sidecar；CLI + SDK + Local Client Server + Remote Server（HTTP/WS 双通道）+ SurrealDB/Qdrant。
+- 长项：
+  - 记忆主链路完整（store → 向量化 → Qdrant 召回 → Reranker 精排），含 `is_vectorized` 失败标记与 `retry` 补偿。
+  - 四级数据隔离（owner / team / project / repo+branch 动态分表）+ 共享幂等管理。
+  - Graph RAG 方案完整（本体、异步抽取状态机、混合检索、实体消歧）。
+  - 多入口接入：CLI（20 命令）、MemoryClient SDK、Claude Code Skills、Hooks、MCP。
+- 潜在成本：
+  - SurrealDB 生态较小众，学习成本高于 PostgreSQL。
+  - 检索链路强依赖 GPU 模型服务（Qwen 系）与内部基础设施，离线不可用。
+  - 自带文档（2026-03 版）落后于代码，部分"待补齐"能力已实现（见 [25](25-teams-memory-reuse-overview.md) 差异清单）。
+
 ## 3. 按目标选仓库能力
 
 | 目标 | 建议主参考 | 次参考 |
@@ -143,6 +171,10 @@ docs 目录另含以下高价值专题，目前未在本文档集内提炼：
 | 做统一 CLI + GUI + HTTP/WS 能力输出 | open-context | code-studio |
 | 做 ACP 多会话 Agent 客户端 | zmax（`16`/`17` 章节） | open-context |
 | 做工程化 CLI 规范与 headless 能力 | zmax（`14` 章节） | code-studio |
+| 做团队记忆/知识管理产品 | teams-memory（`25`-`30` 章节） | open-context（参考工具化） |
+| 做语义检索（召回+精排+补偿） | teams-memory（`28`/`29` 章节） | code-studio（参考数据层） |
+| 做"本地代理 + 远端服务"双通道 | teams-memory（`26` 章节） | open-context（AppBridge） |
+| 做 Graph RAG / 图数据库混合检索 | teams-memory（`29` 章节） | zmax（知识库经验） |
 
 ## 4. 推荐阅读路径
 
@@ -150,3 +182,4 @@ docs 目录另含以下高价值专题，目前未在本文档集内提炼：
 2. 依赖评估：看 [11-dependency-inventory.md](11-dependency-inventory.md)。
 3. 数据决策：看 [12-database-selection.md](12-database-selection.md)。
 4. 落地规范：看 [10-engineering-toolchain-and-ci.md](10-engineering-toolchain-and-ci.md)。
+5. 团队记忆/知识管理：看 [25-teams-memory-reuse-overview.md](25-teams-memory-reuse-overview.md) 与 [26-teams-memory-architecture.md](26-teams-memory-architecture.md)。
