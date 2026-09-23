@@ -126,20 +126,20 @@
 
 ```bash
 # 1) 中英文类：直接构建评测集（与现有 eval-formal.csv 等价）
-python3 scripts/build-formal-eval-csv.py \
+python3 py/eval/build_formal_eval_csv.py \
     --norm-dir open-datasets/split/zh-en \
     --out evaluation/open-dataset/eval-zh-en.csv
 
 # 2) 非中英文类：翻译后落到 split/other-lang-zh/ ，再跑同一条流程
-python3 scripts/translate/translate_batch.py \
+python3 py/translate/translate_batch.py \
     --in open-datasets/split/other-lang \
     --out open-datasets/split/other-lang-zh
-python3 scripts/build-formal-eval-csv.py \
+python3 py/eval/build_formal_eval_csv.py \
     --norm-dir open-datasets/split/other-lang-zh \
     --out evaluation/open-dataset/eval-translated.csv
 
 # 3) 合并两类
-python3 scripts/merge-eval-csv.py eval-zh-en.csv eval-translated.csv \
+python3 py/eval/merge_eval_csv.py eval-zh-en.csv eval-translated.csv \
     --out evaluation/open-dataset/eval-formal.csv
 ```
 

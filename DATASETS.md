@@ -69,7 +69,7 @@
 
 ### 1.5 简单题评测集（`evaluation/open-dataset/eval-simple-{500,1000}.csv`）
 
-面向「简单题」场景的小学数学应用题评测集，中英优先。由 `scripts/build-simple-eval-csv.py` 从 `open-datasets/` 构建。
+面向「简单题」场景的小学数学应用题评测集，中英优先。由 `py/eval/build_simple_eval_csv.py` 从 `open-datasets/` 构建。
 
 | 文件 | 行数 | 语种 | 来源构成 | 构建参数 |
 |---|---|---|---|---|
@@ -92,7 +92,7 @@
 重建命令：
 
 ```bash
-python3 scripts/build-simple-eval-csv.py \
+python3 py/eval/build_simple_eval_csv.py \
   --out evaluation/open-dataset/eval-simple-500.csv --max-steps 3 --supplement 250
 ```
 
@@ -101,7 +101,7 @@ python3 scripts/build-simple-eval-csv.py \
 
 ### 1.6 正式评测集（`evaluation/open-dataset/eval-formal.csv`）
 
-**正式跑分用的主评测集**，从归一化产物 `open-datasets/normalized/`（26 个基准 / 320,156 行）抽取，中英文优先、过滤无效数据。由 `scripts/build-formal-eval-csv.py` 构建。
+**正式跑分用的主评测集**，从归一化产物 `open-datasets/normalized/`（26 个基准 / 320,156 行）抽取，中英文优先、过滤无效数据。由 `py/eval/build_formal_eval_csv.py` 构建。
 
 | 项目 | 值 |
 |---|---|
@@ -136,17 +136,17 @@ aqua_rat 498（test 划分仅 254 条）
 重建命令：
 
 ```bash
-/Users/guobin/.workbuddy/binaries/python/envs/default/bin/python scripts/build-formal-eval-csv.py
+python3 py/eval/build_formal_eval_csv.py
 # 变体
-python3 scripts/build-formal-eval-csv.py --split-policy test-first  # 允许 train 补足
-python3 scripts/build-formal-eval-csv.py --no-cap                   # 全量 22.9 万行
+python3 py/eval/build_formal_eval_csv.py --split-policy test-first  # 允许 train 补足
+python3 py/eval/build_formal_eval_csv.py --no-cap                   # 全量 22.9 万行
 ```
 
 > 只读取 jsonl，**不依赖 pyarrow**（parquet 已在上一环节归一化）。
 
 ### 1.7 语种拆分（`open-datasets/split/`，gitignored）
 
-由 `scripts/split-by-lang.py` 把归一化层按语种切分，为「非中英文数据翻译成中文」做准备。统计报告：`evaluation/open-dataset/SPLIT-REPORT.md`。
+由 `py/normalize/split_by_lang.py` 把归一化层按语种切分，为「非中英文数据翻译成中文」做准备。统计报告：`evaluation/open-dataset/SPLIT-REPORT.md`。
 
 | 目录 | 条数 | 占比 | 说明 |
 |---|---|---|---|
@@ -157,9 +157,9 @@ python3 scripts/build-formal-eval-csv.py --no-cap                   # 全量 22.
 已验证：`--norm-dir open-datasets/split/zh-en` 跑出的 CSV 与 `eval-formal.csv` **MD5 完全一致**（27,916 行）。
 
 ```bash
-python3 scripts/split-by-lang.py                    # 拆分 + 生成报告
-python3 scripts/split-by-lang.py --per-lang         # 非中英额外按语言分文件
-python3 scripts/split-by-lang.py --keep-unlabeled   # 落盘未标注语言数据
+python3 py/normalize/split_by_lang.py                    # 拆分 + 生成报告
+python3 py/normalize/split_by_lang.py --per-lang         # 非中英额外按语言分文件
+python3 py/normalize/split_by_lang.py --keep-unlabeled   # 落盘未标注语言数据
 ```
 
 **两个坑**：
@@ -167,7 +167,7 @@ python3 scripts/split-by-lang.py --keep-unlabeled   # 落盘未标注语言数�
 1. `--norm-dir` 必须指向**目录**（内含 `<dataset>.jsonl`）。`build-formal-eval-csv.py` 用文件名识别数据集并据此配额；若指向单个合并文件，整个池会被当成同一数据集，2,000 条配额会把 22.8 万砍到 2,000 条。
 2. 拆分目录内**必须保留 `<dataset>` 维度**，同理。
 
-**翻译后的衔接**：翻译产物落到 `split/other-lang-zh/`（lang 改写为 `zh`），跑 `build-formal-eval-csv.py` 产出 CSV，再用 `scripts/merge-eval-csv.py` 与中英文类合并。
+**翻译后的衔接**：翻译产物落到 `split/other-lang-zh/`（lang 改写为 `zh`），跑 `build-formal-eval-csv.py` 产出 CSV，再用 `py/eval/merge_eval_csv.py` 与中英文类合并。
 
 ### 1.8 中英文全量导出（`evaluation/open-dataset/`）
 
@@ -182,11 +182,11 @@ python3 scripts/split-by-lang.py --keep-unlabeled   # 落盘未标注语言数�
 
 ```bash
 # 全量（含 longbench）
-python3 scripts/build-formal-eval-csv.py --norm-dir open-datasets/split/zh-en \
+python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
     --split-policy all --no-cap --out evaluation/open-dataset/eval-zh-en-full.csv
 
 # 排除 longbench（新增 --exclude-dataset，优先级高于 --no-cap）
-python3 scripts/build-formal-eval-csv.py --norm-dir open-datasets/split/zh-en \
+python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
     --split-policy all --no-cap --exclude-dataset longbench-data \
     --out evaluation/open-dataset/eval-zh-en-full-nolb.csv
 ```

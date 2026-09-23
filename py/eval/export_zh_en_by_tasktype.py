@@ -1,15 +1,41 @@
 #!/usr/bin/env python3
 """把 zh/en 双语池（open-datasets/split/zh-en/）按 task_type 拆分为 mcq 与 open_qa 两个 CSV。
 列结构与 evaluation/open-dataset/eval-formal.csv 一致（13 列），流式写入避免大文件内存问题。"""
-import json, csv, sys
+
+import csv
+import json
+import sys
 from pathlib import Path
 
-SRC = Path("/Users/guobin/tencent/datasets/open-datasets/split/zh-en")
-OUT_DIR = Path("/Users/guobin/tencent/datasets/evaluation/open-dataset")
-COLS = ["id", "source", "category", "task_type", "lang", "split", "subject",
-        "question", "context", "options", "answer", "solution", "extra"]
-SUBJECT_KEYS = ("subject", "primary_category", "subtask", "level", "task",
-                "category", "dataset", "perturbation_type", "answer_type")
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "open-datasets" / "split" / "zh-en"
+OUT_DIR = ROOT / "evaluation" / "open-dataset"
+COLS = [
+    "id",
+    "source",
+    "category",
+    "task_type",
+    "lang",
+    "split",
+    "subject",
+    "question",
+    "context",
+    "options",
+    "answer",
+    "solution",
+    "extra",
+]
+SUBJECT_KEYS = (
+    "subject",
+    "primary_category",
+    "subtask",
+    "level",
+    "task",
+    "category",
+    "dataset",
+    "perturbation_type",
+    "answer_type",
+)
 
 
 def pick_subject(meta: dict) -> str:
@@ -22,7 +48,9 @@ def pick_subject(meta: dict) -> str:
 
 def row_of(r: dict, ds: str) -> dict:
     meta = r.get("metadata") or {}
-    extra = {k: v for k, v in meta.items() if k != "context" and v not in (None, "", [])}
+    extra = {
+        k: v for k, v in meta.items() if k != "context" and v not in (None, "", [])
+    }
     if extra:
         s = json.dumps(extra, ensure_ascii=False)
         if len(s) > 500:
@@ -52,7 +80,9 @@ def main():
     targets = ("mcq", "open_qa")
     outs, writers, counts = {}, {}, {}
     for t in targets:
-        f = (OUT_DIR / f"eval-{t}-zh-en.csv").open("w", encoding="utf-8-sig", newline="")
+        f = (OUT_DIR / f"eval-{t}-zh-en.csv").open(
+            "w", encoding="utf-8-sig", newline=""
+        )
         w = csv.DictWriter(f, fieldnames=COLS, quoting=csv.QUOTE_MINIMAL)
         w.writeheader()
         outs[t], writers[t], counts[t] = f, w, 0

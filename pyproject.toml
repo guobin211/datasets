@@ -1,0 +1,18 @@
+[project]
+name = "datasets"
+version = "0.1.0"
+description = "python scripts dependencies"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pyarrow>=17",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.8",
+]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

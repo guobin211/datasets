@@ -1,10 +1,15 @@
-# -*- coding: utf-8 -*-
 """修复 24-open-context-tauri-commands-design.md 的实现现状问题（2026-09-22 核验）"""
-import io, sys
 
-PATH = "/Users/guobin/tencent/datasets/docs/24-open-context-tauri-commands-design.md"
-with io.open(PATH, "r", encoding="utf-8") as f:
+from pathlib import Path
+
+PATH = str(
+    Path(__file__).resolve().parents[2]
+    / "docs"
+    / "24-open-context-tauri-commands-design.md"
+)
+with open(PATH, "r", encoding="utf-8") as f:
     text = f.read()
+
 
 def rep(old, new, tag):
     global text
@@ -17,6 +22,7 @@ def rep(old, new, tag):
     text = text.replace(old, new, 1)
     print(f"[ OK ] {tag}")
     return True
+
 
 # 1. 头部版本状态
 rep(
@@ -88,6 +94,6 @@ rep(
     "§8 P3",
 )
 
-with io.open(PATH, "w", encoding="utf-8") as f:
+with open(PATH, "w", encoding="utf-8") as f:
     f.write(text)
 print("完成，文件已写回。")

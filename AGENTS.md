@@ -117,5 +117,10 @@ opus-4.8, gpt-5.5, fable-5, pi, claude-mixed, glm-5.3, kimi-2.7, hy-4, minimax-3
 - `third-dataset/` — 原始数据（gitignored，按数据源分子目录）
 - `training/data/categorized/` — 分类处理产物（微调输入），按 `<category>/<source>.jsonl` 组织
 - `evaluation/third-dataset/qa-csv/` 与 `evaluation/third-dataset/eval-dataset-*.csv` — 评测集（单模型 Q&A 与宽表）
-- `scripts/` — 所有可执行脚本（TS）
+- `scripts/` — 可执行脚本（TS，自产数据流水线）
+- `py/` — Python 脚本（开源数据归一化 / 翻译 / 评测集构建，见 `py/README.md`）
 - `.agents/cache/` — 临时脚本与中间产物（gitignored）
+
+**脚本放置规则**：
+- Python 脚本统一放在 `py/` 目录。
+- TypeScript 脚本统一放在 `scripts/` 目录。

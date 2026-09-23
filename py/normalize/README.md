@@ -4,10 +4,10 @@
 
 ## 怎么写脚本
 
-- 用隔离 Python：`/Users/guobin/.workbuddy/binaries/python/envs/default/bin/python`（含 pyarrow）。
-- 脚本放 `scripts/normalize/normalize_<cluster>.py`，**先** `import sys; sys.path.insert(0, '/Users/guobin/tencent/datasets/scripts/normalize')` 再 `from _norm_common import make_record, JsonlWriter, load_json_array, OPEN`。
+- 用隔离 Python（含 pyarrow）；也可在项目根 `uv sync` 后用 `uv run python`。
+- 脚本放 `py/normalize/normalize_<cluster>.py`，直接 `from _norm_common import make_record, JsonlWriter, load_json_array, OPEN`（同目录运行时自动在 `sys.path` 上，无需手动插入路径）。
 - 每个数据集一个 `JsonlWriter(dataset)` 实例，逐条 `write(make_record(...))`；无法解析/缺关键字段的记录 `writer.skip('原因')` 计数，**不要静默丢弃**。
-- 跑完打印该数据集：输出路径、行数、跳过计数、体积；并把 `writer.close()` 的 dict 收集起来最后 `json.dump` 到 `scripts/normalize/stats_<cluster>.json`。
+- 跑完打印该数据集：输出路径、行数、跳过计数、体积；并把 `writer.close()` 的 dict 收集起来最后 `json.dump` 到 `py/normalize/stats_<cluster>.json`。
 
 ## 统一 schema（必须严格遵守，字段见 _norm_common.py docstring）
 

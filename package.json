@@ -2,8 +2,9 @@
   "name": "datasets",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "start": "tsx scripts/merge-jsonl.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
