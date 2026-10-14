@@ -1,7 +1,7 @@
 # 数据集统计（Dataset Stats）
 
 > 本项目（`/Users/guobin/tencent/datasets`）全部数据的规模、结构与来源汇总。
-> 更新日期：2026-09-18。数据口径以本文件标注为准，重新构建产物后请同步刷新。
+> 更新日期：2026-10-09。数据口径以本文件标注为准，重新构建产物后请同步刷新。
 > 结构约定：第 1 章为项目自有数据；第 2 章为外部**评测基准**；第 3 章为外部**训练数据集**；每行标注「下载」「抽样」状态。
 
 ---
@@ -54,7 +54,7 @@
 | `claude-opus-4-6-10000x-sample-10.csv` | 10 |
 | `home.csv` / `home-mythosmini.csv` / `home-cc.csv` / `claude-fable-5-claude-code.csv` | ≤ 7 行（小样例） |
 
-### 1.4 评测宽表（`evaluation/third-dataset/eval-dataset-*.csv`）
+### 1.4 评测宽表（`evaluation/upload/eval-dataset-*.csv`）
 
 | 文件 | 数据行 | 体积 | 抽样 | Git 状态 |
 |---|---|---|---|---|
@@ -67,7 +67,7 @@
 > 2026-09-18 应用 `isValidEvalQuestion()` 质量过滤后重跑：唯一 question 由 156,663 → 156,583（-80）。
 > 三个大文件均为同一排序（覆盖模型数降序）的前缀，故 **6k ⊂ 50k ⊂ full**。
 
-### 1.5 简单题评测集（`evaluation/open-dataset/eval-simple-{500,1000}.csv`）
+### 1.5 简单题评测集（`evaluation/upload/eval-simple-{500,1000}.csv`）
 
 面向「简单题」场景的小学数学应用题评测集，中英优先。由 `py/eval/build_simple_eval_csv.py` 从 `open-datasets/` 构建。
 
@@ -93,13 +93,13 @@
 
 ```bash
 python3 py/eval/build_simple_eval_csv.py \
-  --out evaluation/open-dataset/eval-simple-500.csv --max-steps 3 --supplement 250
+  --out evaluation/upload/eval-simple-500.csv --max-steps 3 --supplement 250
 ```
 
 > 依赖 `pyarrow`（读 parquet）。隔离环境路径：
 > `/Users/guobin/.workbuddy/binaries/python/envs/default/bin/python`
 
-### 1.6 正式评测集（`evaluation/open-dataset/eval-formal.csv`）
+### 1.6 正式评测集（`evaluation/upload/eval-formal.csv`）
 
 **正式跑分用的主评测集**，从归一化产物 `open-datasets/normalized/`（26 个基准 / 320,156 行）抽取，中英文优先、过滤无效数据。由 `py/eval/build_formal_eval_csv.py` 构建。
 
@@ -169,7 +169,7 @@ python3 py/normalize/split_by_lang.py --keep-unlabeled   # 落盘未标注语言
 
 **翻译后的衔接**：翻译产物落到 `split/other-lang-zh/`（lang 改写为 `zh`），跑 `build-formal-eval-csv.py` 产出 CSV，再用 `py/eval/merge_eval_csv.py` 与中英文类合并。
 
-### 1.8 中英文全量导出（`evaluation/open-dataset/`）
+### 1.8 中英文全量导出（`evaluation/upload/eval-zh-en-full*.csv`）
 
 对 `split/zh-en/` 262,984 条跑完整清洗（无效过滤 → 跨数据集去重 → 答案/选项修复）后**全量导出**，不做配额、不排除 train（`split` 列保留原值供下游自行筛选）。
 
@@ -183,12 +183,12 @@ python3 py/normalize/split_by_lang.py --keep-unlabeled   # 落盘未标注语言
 ```bash
 # 全量（含 longbench）
 python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
-    --split-policy all --no-cap --out evaluation/open-dataset/eval-zh-en-full.csv
+    --split-policy all --no-cap --out evaluation/upload/eval-zh-en-full.csv
 
 # 排除 longbench（新增 --exclude-dataset，优先级高于 --no-cap）
 python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
     --split-policy all --no-cap --exclude-dataset longbench-data \
-    --out evaluation/open-dataset/eval-zh-en-full-nolb.csv
+    --out evaluation/upload/eval-zh-en-full-nolb.csv
 ```
 
 **注意**：`--longbench-cap` 仅在**未**指定 `--no-cap` 时生效（`--no-cap` 会把 cap 覆盖为池大小）。全量模式下要排除某个源，用 `--exclude-dataset`（逗号分隔）。
@@ -324,7 +324,7 @@ python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
 ## 4. 口径说明
 
 - 第 1 节数据统计来自 2026-09-18 对工作区的实际扫描（`du` / `wc -l`）。
-- `eval-dataset-*.csv` 大体积文件为构建产物，可由 `scripts/build-eval-csv.ts` 重新生成，因此 gitignored；仅 `eval-dataset-100.csv` 与 `eval-dataset.sample.csv` 两个小样例入库（普通文件，非 LFS）。100/6k/50k/sample 均为 full 的抽样前缀（同排序），故 1.4 中抽样状态标 ✅。
+- `eval-dataset-*.csv` 大体积文件为构建产物，可由 `scripts/build-eval-csv.ts` 重新生成，因此 gitignored；成品 CSV 已统一归拢到 `evaluation/upload/`，仅 `eval-dataset-100.csv` 与 `eval-dataset.sample.csv` 两个小样例入库（普通文件，非 LFS）。100/6k/50k/sample 均为 full 的抽样前缀（同排序），故 1.4 中抽样状态标 ✅。
 - 第 2、3 节为外部数据集：**下载状态** = 是否已存在于 `open-datasets/`（gitignored）；**抽样状态** = 是否已从该数据集中抽取小样本（截至 2026-09-18 均未抽样）。
 - 2026-09-18 批量下载（open-datasets/）：① 中文 8 个 + 数学 5 个（详见上文，总 1.5G）；② 二批次新增 4 个：**IFEval**（HF `google/IFEval`，240K）、**GSM-Plus**（HF `qintongli/GSM-Plus`，GSM-Plus.json 8.4M，1,249 原题 × 3 变体）、**SWE-bench**（GitHub 代码 + HF `princeton-nlp/SWE-bench` 数据 115M）、**LiveCodeBench**（GitHub 代码 + HF `livecodebench/code_generation_lite` Lite 版 400 题 1.2G）。**坑**：GPQA 官方 HF 为 `Idavidrein/gpqa`（`idavidson/gpqa_diamond` 404）；GSM-Plus 官方为 `qintongli/GSM-Plus`（`di-zhang-fdu` 404）；LiveCodeBench 全量 `test.jsonl` 达 9.4G，改用官方 Lite 版；GPQA/HLE 为 gated 数据集需在 HF 页面申请授权后下载。
 - 第 2 节评测基准分数为 2026-09 公开榜单引用值（HLE / SWE-bench 引自 BenchLM 榜单），随时间变化，使用时以最新榜单为准。

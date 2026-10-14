@@ -81,7 +81,7 @@ def funnel(norm_dir: Path, per_dataset: int, longbench_cap: int, seed: str):
         stat[r["source"]]["pool"] += 1
 
     # 评测划分过滤（test-only 口径）
-    usable = [r for r in dedup if not r["split"] or r["split"] in B.TEST_SPLITS]
+    usable = [r for r in dedup if r["split"] in B.EVAL_SPLITS]
     for r in usable:
         stat[r["source"]]["usable"] += 1
     for r in dedup:

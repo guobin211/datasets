@@ -1,6 +1,6 @@
-# CODEBUDDY.md
+# AGENTS.md
 
-This file provides guidance to CodeBuddy Code when working with code in this repository.
+This file provides guidance to AI coding agents when working with code in this repository.
 
 ## 项目概述
 
@@ -76,36 +76,93 @@ tsx scripts/cate-other-jsonl.ts third-dataset/<source>/merge.jsonl [more.jsonl .
 # 4. 把 evaluation/third-dataset/qa-csv/ 的多份单模型 Q&A 合并为宽表评测集
 #    （大文件需加大堆内存，否则 OOM）
 NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
-  --out evaluation/third-dataset/eval-dataset-6k.csv,evaluation/third-dataset/eval-dataset-full.csv \
+  --out evaluation/upload/eval-dataset-6k.csv,evaluation/upload/eval-dataset-full.csv \
   --limit 6000,0
+
+# 5. 统计分类产物分布（4 个桶的条数/体积/角色/轮次/语种/源分布）
+npx tsx scripts/stat-categorized.ts
+
+# 6. 给评测集的 question 列做三维分类（任务类型 / 学科领域 / 难度层级）
+#    全量 15.6 万条，需加大堆内存；--compare 会额外算一份子集占比用于偏斜对比
+NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions.ts \
+  --input evaluation/upload/eval-dataset-full.csv \
+  --compare evaluation/upload/eval-dataset-6k.csv \
+  --out evaluation/third-dataset/eval-question-classify.html
 ```
+
+## 评测问题分类（classify-eval-questions.ts）
+
+对 `eval-dataset-*.csv` 的 `question` 列做规则启发式分类，规则集中在
+`scripts/question-classifier.ts`（纯函数，无 IO），主脚本负责流式读 CSV、聚合、出看板。
+
+- **任务类型**（12 类，互斥优先级）：阅读理解 → 代码编程 → 创意写作 → 翻译 →
+  高等数学/证明 → 考试选择题 → 数学应用题 → 逻辑推理 → 数据分析 → 指令任务 → 概念解释 → 其他
+- **学科领域**（7 类，独立于任务类型）：数学 / 计算机 / 自然科学 / 工程技术 / 人文社科 /
+  生活常识 / 其他。数学应用题与高等数学直接计数学，其余按学科关键词命中。
+- **难度层级**：长度 + 题型基分 + 公式/数字/多问加权的启发式分数，**按名次切三档**（各 1/3）。
+  早期版本按分数值切会出现 62%/5%/33% 的畸形分布——分数是离散的，必须按名次切。
+
+产物：`evaluation/third-dataset/eval-question-classify.html`（看板）、
+`eval-question-classify-{full,6k}.csv`（逐题结果，可 join 回宽表）、
+`.agents/cache/eval-question-classify-*.json`（结构化统计）。
+
+**关键坑**：`eval-dataset-6k.csv` 是按「覆盖模型数降序」取的前缀，**严重偏斜**——
+子集里数学应用题占 84%，全量只占 18%；代码题子集 2.8% vs 全量 23%。
+做分布类结论必须用全量，子集只能用于快速冒烟。
+
+## 分类产物统计（stat-categorized.ts）
+
+全量流式扫描 `training/data/categorized/` 的 4 个分类桶（约 57 万条 / 1.6 GB，约 5 秒），
+产出两份文件：
+
+- `.agents/cache/categorized-stats.json` — 结构化统计结果，供下游脚本复用
+- `training/data/categorized-stats.html` — 自包含 ECharts 看板（12 张图，浅色主题）
+
+统计维度：桶条数 / 磁盘体积 / 文本量 / 消息数与角色构成 / 真实 user 轮次 /
+单条文本量分桶 / 语种（CJK 占比启发式）/ 数据源 × 桶矩阵 / 解析失败行。
+
+两个口径要点：
+
+- **真实 user 轮次**：轮次统计排除「纯 tool_result 的 user 消息」，与 `cate-jsonl.ts`
+  的 `real_user` 定义一致。若直接用 `role=user` 计数，question-answer-tool-call 桶会
+  出现 user>=2 的假象（实际是工具返回被当作 user 消息）。
+- **question 桶是派生桶**：每条会话都会在 question 桶输出一份「仅用户提问」副本，
+  因此其条数 ≈ 其余三桶之和。算微调配比时以其余三桶为分母。
+
+`--root` / `--out` / `--json` / `--echarts` / `--top-source` 可覆盖默认路径与 Top N。
 
 ## 评测集构建（build-eval-csv.ts）
 
 将 `evaluation/third-dataset/qa-csv/*.csv`（每份列为 `question, model1, answer1`，一个文件一个模型）
-合并为一份宽表：`question, context, answer-<model>...`，每行一个 question，
+合并为一份宽表：`question, context, answer_<model>...`，每行一个 question，
 各模型答案填入对应列，无答案留空。当前 16 列（context 数据源未提供，恒空）。
 
 - `--out` 逗号分隔可一次产出多个文件，`--limit` 与其一一对应（0/省略 = 全量）
 - 排序按「覆盖模型数降序」，因此多个输出是**嵌套子集**：小文件是大文件的高质量前缀
-- `MODEL_MAP` 控制 model1 → 列名映射；置 `null` 丢弃该数据源（当前丢弃 `-home-*` 噪音）
-- `MODEL_ORDER` 控制列顺序；其中的占位模型（glm-5.3 / kimi-2.7 / hy-4 / minimax-3）
+- `MODEL_MAP` 控制 model1 → 模型标识映射；置 `null` 丢弃该数据源（当前丢弃 `-home-*` 噪音）
+- `MODEL_ORDER` 控制列顺序（值为模型标识，内部用）；其中的占位模型（glm-5.3 / kimi-2.7 / hy-4 / minimax-3）
   暂无数据源，输出恒空，补数据时只需新增 CSV + 一行映射
+- 输出列名经 `toFieldSlug()` 规范化：标识中的中横线与点号都转成下划线
 - 同一 question 同一模型列保留首个答案，保证结果确定
 
-当前模型列：claude-distills, claude-fable-5, claude-mythos, opus-4.6, opus-4.6-4.7,
-opus-4.8, gpt-5.5, fable-5, pi, claude-mixed, glm-5.3, kimi-2.7, hy-4, minimax-3
+当前模型列（按 `MODEL_ORDER` → 实际字段名）：answer_claude_distills, answer_claude_fable_5,
+answer_claude_mythos, answer_opus_4_6, answer_opus_4_6_4_7, answer_opus_4_8, answer_gpt_5_5,
+answer_fable_5, answer_pi, answer_claude_mixed, answer_glm_5_3, answer_kimi_2_7, answer_hy_4,
+answer_minimax_3
 
-产物：`evaluation/third-dataset/eval-dataset-6k.csv` (10M) / `-50k.csv` (224M) / `-full.csv` (655M, 156663 行)
+产物：`evaluation/upload/eval-dataset-6k.csv` (10M) / `-50k.csv` (224M) / `-full.csv` (655M, 156,583 行)
 
 ## 技术栈
 
-- **TypeScript**（唯一语言）：Node.js ESM，`tsx` 直接执行，`parseArgs` 解析 CLI，`createReadStream` + `readline` 流式处理大文件（避免加载到内存）
+- **TypeScript**（自产数据流水线）：Node.js ESM，`tsx` 直接执行，`parseArgs` 解析 CLI，`createReadStream` + `readline` 流式处理大文件（避免加载到内存）
+- **Python**（开源数据流水线，`py/`）：`uv` 管理依赖，`ruff` 格式化与检查，`pyarrow` 读 parquet
 - **包管理**：pnpm（workspace 配置见 `pnpm-workspace.yaml`）
 - **tsconfig 关键项**：`strict: true`、`noUncheckedIndexedAccess: true`、`verbatimModuleSyntax: true`、`module: nodenext`
 
 ## 代码规范要点
 
+- **数据字段名一律用下划线连接**，禁止中横线（也不留点号）。模型名等标识写进字段名前
+  先过 `toFieldSlug()`（`scripts/utils.ts`）：`opus-4.6` → `answer_opus_4_6`
 - 流式处理 JSONL：统一用 `createReadStream` + `createInterface`，不要一次性 `readFile`
 - 写入大文件用 `createWriteStream` 并处理背压（`drain` 事件）
 - TS 脚本入口用顶层 `await main()` 而非 `.then()`
@@ -116,9 +173,11 @@ opus-4.8, gpt-5.5, fable-5, pi, claude-mixed, glm-5.3, kimi-2.7, hy-4, minimax-3
 
 - `third-dataset/` — 原始数据（gitignored，按数据源分子目录）
 - `training/data/categorized/` — 分类处理产物（微调输入），按 `<category>/<source>.jsonl` 组织
-- `evaluation/third-dataset/qa-csv/` 与 `evaluation/third-dataset/eval-dataset-*.csv` — 评测集（单模型 Q&A 与宽表）
+- `evaluation/upload/` — **统一 CSV 出口**，所有成品评测集（自产宽表 + 开源题表）都落这里；
+  `evaluation/third-dataset/` 放 qa-csv 等自产中间产物，`evaluation/open-dataset/` 放开源报告与看板
 - `scripts/` — 可执行脚本（TS，自产数据流水线）
 - `py/` — Python 脚本（开源数据归一化 / 翻译 / 评测集构建，见 `py/README.md`）
+- `docs/` — 文档：`dataset-platform/`（本项目数据平台方案）+ `tech-reference/`（外部四仓库技术选型参考）
 - `.agents/cache/` — 临时脚本与中间产物（gitignored）
 
 **脚本放置规则**：

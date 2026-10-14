@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """把 zh/en 双语池（open-datasets/split/zh-en/）按 task_type 拆分为 mcq 与 open_qa 两个 CSV。
-列结构与 evaluation/open-dataset/eval-formal.csv 一致（13 列），流式写入避免大文件内存问题。"""
+列结构与 evaluation/open-dataset/eval-formal.csv 一致，流式写入避免大文件内存问题。"""
 
 import csv
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -10,44 +11,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "open-datasets" / "split" / "zh-en"
 OUT_DIR = ROOT / "evaluation" / "open-dataset"
-COLS = [
-    "id",
-    "source",
-    "category",
-    "task_type",
-    "lang",
-    "split",
-    "subject",
-    "question",
-    "context",
-    "options",
-    "answer",
-    "solution",
-    "extra",
-]
-SUBJECT_KEYS = (
-    "subject",
-    "primary_category",
-    "subtask",
-    "level",
-    "task",
-    "category",
-    "dataset",
-    "perturbation_type",
-    "answer_type",
-)
 
 
-def pick_subject(meta: dict) -> str:
-    for k in SUBJECT_KEYS:
-        v = meta.get(k)
-        if v:
-            return str(v)
-    return ""
+def _load_builder():
+    """复用 build_formal_eval_csv 的列定义与学科拆分逻辑，避免两份实现语义漂移。"""
+    spec = importlib.util.spec_from_file_location(
+        "build_formal_eval_csv",
+        Path(__file__).with_name("build_formal_eval_csv.py"),
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+B = _load_builder()
+COLS = B.CSV_COLUMNS
 
 
 def row_of(r: dict, ds: str) -> dict:
     meta = r.get("metadata") or {}
+    subject, difficulty, variant = B.classify_subject(ds, meta)
     extra = {
         k: v for k, v in meta.items() if k != "context" and v not in (None, "", [])
     }
@@ -64,8 +47,10 @@ def row_of(r: dict, ds: str) -> dict:
         "category": r.get("category") or "",
         "task_type": r.get("task_type") or "",
         "lang": r.get("lang") or "",
-        "split": r.get("split") or "",
-        "subject": pick_subject(meta),
+        "split": r.get("split") or B.UNSPECIFIED_SPLIT,
+        "subject": subject,
+        "difficulty": difficulty,
+        "variant": variant,
         "question": str(r.get("question") or ""),
         "context": str(meta.get("context") or ""),
         "options": json.dumps(opts, ensure_ascii=False) if opts else "",

@@ -26,6 +26,9 @@ py/
 │   ├── build_simple_eval_csv.py  小学数学简单题子集 eval-simple-*.csv
 │   ├── merge_eval_csv.py         多份评测 CSV 合并去重
 │   ├── eval_coverage_stats.py    构建漏斗与覆盖度统计（复用 build_formal 逻辑）
+│   ├── stat_eval_categories.py   题目分类统计（category/task_type/lang/source/subject/difficulty/variant）
+│   │                             → .agents/cache/eval-category-stats.json
+│   │                             → evaluation/open-dataset/eval-category-stats.html（ECharts）
 │   ├── review_eval_csv.py        已产出 CSV 的只读质检报告
 │   └── export_zh_en_by_tasktype.py  按 task_type 导出中英数据
 └── tools/              一次性维护脚本
@@ -40,8 +43,8 @@ open-datasets/<原始>
   → py/normalize/normalize_*.py        → open-datasets/normalized/<dataset>.jsonl
   → py/normalize/split_by_lang.py      → open-datasets/split/{zh-en,other-lang,unlabeled}/
   → py/translate/translate_batch.py    （仅 other-lang，产物 lang 改写为 zh）
-  → py/eval/build_formal_eval_csv.py   → evaluation/open-dataset/eval-formal.csv
-  → py/eval/build_simple_eval_csv.py   → evaluation/open-dataset/eval-simple-*.csv
+  → py/eval/build_formal_eval_csv.py   → evaluation/upload/eval-formal.csv
+  → py/eval/build_simple_eval_csv.py   → evaluation/upload/eval-simple-*.csv
 ```
 
 详细口径见 `evaluation/README.md`、`evaluation/open-dataset/SPLIT-REPORT.md`

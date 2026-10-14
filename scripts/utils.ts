@@ -189,3 +189,12 @@ export function filterForQuestion(msgs: Message[]): Message[] {
     .filter((m) => m?.role === 'user' && !isToolResultOnly(m))
     .map((m) => ({ role: 'user', content: m.content }));
 }
+
+/**
+ * 把任意标识（模型名等）转成数据字段名片段：连续的非字母数字字符压成单个下划线。
+ * 字段名统一用下划线连接，不允许出现中横线 / 点号。
+ * 例：claude-distills -> claude_distills，opus-4.6 -> opus_4_6
+ */
+export function toFieldSlug(name: string): string {
+  return name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}

@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NORM_DIR = ROOT / "open-datasets" / "normalized"
-DEFAULT_OUT = ROOT / "evaluation" / "open-dataset" / "eval-formal.csv"
+DEFAULT_OUT = ROOT / "evaluation" / "upload" / "eval-formal.csv"
 
 KEEP_LANGS = ("zh", "en")
 EXCLUDE_CATEGORIES = ("code",)  # 需执行环境 / 无标准答案，正式评测不纳入
@@ -37,11 +37,48 @@ EXCLUDE_CATEGORIES = ("code",)  # 需执行环境 / 无标准答案，正式评�
 # 视为「评测划分」的 split 取值。train 不在此列——混入训练数据会让评测结果虚高。
 TEST_SPLITS = ("test", "testmini", "validation", "val", "dev")
 
+# 部分数据集（asdiv / math / mathmist / PolyMath / mmath）本身不做训练测试划分，
+# 全部题目天然都是评测题。这类记录写入显式占位值而非空串：
+# 空串无法区分「确实没有划分」与「抽取时漏填」，下游 `split == 'test'` 过滤会静默丢题。
+UNSPECIFIED_SPLIT = "unspecified"
+# 采样时可用的划分集合 = 显式评测划分 + 天然无划分
+EVAL_SPLITS = TEST_SPLITS + (UNSPECIFIED_SPLIT,)
+
 # 每个数据集的默认配额上限。context 体积大的源单独调低，避免 CSV 膨胀。
 DEFAULT_CAP = 2000
 SPECIAL_CAP = {
     "longbench-data": 500,  # context 中位 31K 字符
 }
+
+# ---- subject 三元拆分：学科 / 难度 / 变体 ----
+# 各源「学科」的取值来源。未列出的源走 classify_subject 里的通用兜底。
+SUBJECT_KEYS_BY_DS: dict[str, tuple[str, ...]] = {
+    "CMMLU": ("subject",),
+    "ceval-data": ("subject",),
+    "ChineseSimpleQA": ("primary_category",),
+    "SafetyBench": ("category",),
+    "AlignBench": ("category",),
+    "longbench-data": ("subtask",),
+    "mathqa": ("category",),
+}
+# 语义是「难度等级」而非学科的 key
+DIFFICULTY_KEYS = ("level",)
+# 语义是「扰动 / 变体标记」而非学科的 key
+VARIANT_KEYS = ("perturbation_type",)
+# 无信息量的取值（HalluQA 的 open = 开放域，不指向任何学科）
+USELESS_SUBJECTS = frozenset({"open", "unknown", "none", "n/a"})
+
+# 文件名 = 年份段 + 学科 + 题型后缀。题型后缀剥掉：
+# 同一学科的 MCQs / Open-ended / Fill-in-the-Blank 会拆成多个「学科」，
+# 题型信息由 task_type 承载，不需要在学科里重复一份。
+GAOKAO_FILE_SUBJECT = re.compile(
+    r"^\d{4}(?:-\d{4})?_(.+?)"
+    r"(?:_MCQs|_Open-ended_Questions|_Fill-in-the-Blank|_Fill_in_Blanks)?\.js(?:on)?$"
+)
+GAOKAO_PAPER_BRACKET = re.compile(r"^\s*[（(]\s*|\s*[）)]\s*$")
+GAOKAO_PAPER_ROMAN = re.compile(r"(新课标)\s*(iii|ii|i)\s*$", re.IGNORECASE)
+FULLWIDTH_ROMAN = {"ⅰ": "Ⅰ", "ⅱ": "Ⅱ", "ⅲ": "Ⅲ", "ⅳ": "Ⅳ"}
+ROMAN_UPPER = {"i": "Ⅰ", "ii": "Ⅱ", "iii": "Ⅲ", "iv": "Ⅳ"}
 
 # 选项文本里残留的字母前缀（如 mathqa 的 'a . 4'），与同数据集主流格式不一致
 OPT_LETTER_PREFIX = re.compile(r"^[a-e]\s*[.)]\s+")
@@ -58,6 +95,8 @@ CSV_COLUMNS = [
     "lang",
     "split",
     "subject",
+    "difficulty",
+    "variant",
     "question",
     "context",
     "options",
@@ -129,29 +168,76 @@ def is_real_letter_answer(answer: str, options: list) -> bool:
     return sum(len(o) for o in opts) / len(opts) > 3
 
 
-def pick_subject(meta: dict) -> str:
-    """从 metadata 里挑一个最有信息量的学科/子类标签。"""
-    for key in (
-        "subject",
-        "primary_category",
-        "subtask",
-        "level",
-        "task",
-        "category",
-        "dataset",
-        "perturbation_type",
-        "answer_type",
-    ):
+def norm_gaokao_paper(value: str) -> str:
+    """归一化高考卷别：去括号 + 罗马数字统一大写。
+
+    「（新课标ⅰ）」「（新课标Ⅰ）」「（新课标i）」是同一卷别的三种写法，
+    原样保留会白白占掉三个分桶，也让按卷别切片的下游结果对不上。
+    """
+    s = GAOKAO_PAPER_BRACKET.sub("", str(value)).strip()
+    s = "".join(FULLWIDTH_ROMAN.get(ch, ch) for ch in s)
+    return GAOKAO_PAPER_ROMAN.sub(
+        lambda m: f"{m.group(1)}{ROMAN_UPPER[m.group(2).lower()]}", s
+    )
+
+
+def gaokao_subject(meta: dict) -> str:
+    """从 subject_file 文件名里取真学科：2010-2022_Biology_MCQs.json → Biology。"""
+    m = GAOKAO_FILE_SUBJECT.match(str(meta.get("subject_file") or "").strip())
+    return m.group(1) if m else ""
+
+
+def classify_subject(ds: str, meta: dict) -> tuple[str, str, str]:
+    """拆出 (subject, difficulty, variant) 三元组。
+
+    subject    真学科 / 领域 / 能力维度，跨源可比
+    difficulty 难度等级（math 的 Level N、PolyMath 的 low/medium/high/top）
+    variant    变体标记（gsm_plus 的扰动类型、GAOKAO-Bench 的卷别）
+
+    拆分的必要性：原始 metadata 里 subject 的语义随源而变，混在一列里做分层
+    会得到语义不通的分桶（把「Level 3」和「Biology」当同类标签比较）。
+    """
+    if ds == "GAOKAO-Bench":
+        # 这个源的 category 存的是卷别，真学科藏在 subject_file 文件名里
+        return (
+            gaokao_subject(meta),
+            "",
+            norm_gaokao_paper(meta.get("category") or ""),
+        )
+
+    subject = ""
+    for key in SUBJECT_KEYS_BY_DS.get(ds, ()):
         v = meta.get(key)
         if v:
-            return str(v)
-    return ""
+            subject = str(v).strip()
+            break
+    if not subject:
+        # 未登记来源的兜底：沿用旧 pick_subject 的优先级，
+        # 但排除 level / perturbation_type —— 它们不是学科
+        for key in ("subject", "primary_category", "subtask", "category", "dataset"):
+            v = meta.get(key)
+            if v:
+                subject = str(v).strip()
+                break
+
+    difficulty = next(
+        (str(meta[k]).strip() for k in DIFFICULTY_KEYS if meta.get(k)), ""
+    )
+    variant = next((str(meta[k]).strip() for k in VARIANT_KEYS if meta.get(k)), "")
+
+    if subject.lower() in USELESS_SUBJECTS:
+        subject = ""
+    return subject, difficulty, variant
 
 
-def clean_record(r: dict) -> tuple[dict | None, str]:
+def clean_record(
+    r: dict, split_default: str = UNSPECIFIED_SPLIT
+) -> tuple[dict | None, str]:
     """
     清洗单条记录。返回 (清洗后的记录, 处理标记)。
     记录不合格时返回 (None, 剔除原因)。
+
+    split_default: 源数据未标注划分时写入的占位值，默认 unspecified。
     """
     ds = r["_ds"]
     q = str(r.get("question") or "").strip()
@@ -229,13 +315,18 @@ def clean_record(r: dict) -> tuple[dict | None, str]:
     else:
         s = ""
 
+    subject, difficulty, variant = classify_subject(ds, meta)
+
     return {
         "source": ds,
         "category": r.get("category") or "",
         "task_type": r.get("task_type") or "",
         "lang": r.get("lang") or "",
-        "split": r.get("split") or "",
-        "subject": pick_subject(meta),
+        # 不写空串：见 UNSPECIFIED_SPLIT 注释
+        "split": r.get("split") or split_default,
+        "subject": subject,
+        "difficulty": difficulty,
+        "variant": variant,
         "question": q,
         "context": ctx,
         "options": json.dumps(opts, ensure_ascii=False) if opts else "",
@@ -252,7 +343,8 @@ def stratified_sample(
     pool: list[dict], cap: int, seed: str, split_policy: str
 ) -> list[dict]:
     """
-    分层采样：按 (task_type, subject) 分桶后轮转取，保证配额内各层比例接近原分布。
+    分层采样：按 (task_type, subject, difficulty, variant) 分桶后轮转取，
+    保证配额内各层比例接近原分布。
 
     split_policy:
       test-only  只用评测划分（test / testmini / val / dev / validation / 未标注）
@@ -263,10 +355,10 @@ def stratified_sample(
     若直接用稳定随机键排序，会把 test 优先的顺序打乱，导致 train 数据混入。
     """
 
-    # 未标注 split 的源（math / asdiv / mathmist / PolyMath / mmath）视作可用，
-    # 这类数据集本身不划分训练测试，全部都是评测题。
+    # 未标注划分的源（math / asdiv / mathmist / PolyMath / mmath）已被 clean_record
+    # 回填为 UNSPECIFIED_SPLIT，与显式评测划分一并视作可用。
     def usable(r: dict) -> bool:
-        return not r["split"] or r["split"] in TEST_SPLITS
+        return r["split"] in EVAL_SPLITS
 
     if split_policy == "test-only":
         pool = [r for r in pool if usable(r)]
@@ -276,9 +368,12 @@ def stratified_sample(
     def split_rank(r: dict) -> int:
         return 0 if usable(r) else 1
 
+    # 分桶键带上 difficulty / variant：math 的 Level 1-5、PolyMath 的 low~top、
+    # gsm_plus 的 8 种扰动原本是靠 subject 列区分的，三元拆分后 subject 只装学科，
+    # 这两维必须补进键里，否则各层会被并成一个桶，配额内不再均匀。
     buckets = defaultdict(list)
     for r in pool:
-        buckets[(r["task_type"], r["subject"])].append(r)
+        buckets[(r["task_type"], r["subject"], r["difficulty"], r["variant"])].append(r)
     for b in buckets.values():
         b.sort(
             key=lambda r: (
@@ -326,6 +421,12 @@ def main():
         choices=["test-only", "test-first", "all"],
         help="划分策略：test-only 严格排除 train（默认）／test-first 优先 test 不足再补／all 不区分",
     )
+    ap.add_argument(
+        "--split-default",
+        default=UNSPECIFIED_SPLIT,
+        help="源数据未标注划分时写入的值（默认 unspecified；"
+        "下游若按 split=='test' 过滤，可显式指定 test）",
+    )
     ap.add_argument("--no-cap", action="store_true", help="不做配额，全量导出")
     ap.add_argument(
         "--exclude-dataset",
@@ -355,7 +456,7 @@ def main():
     # ---- 逐条清洗 ----
     cleaned, rejects = [], Counter()
     for r in by_lang:
-        rec, flag = clean_record(r)
+        rec, flag = clean_record(r, args.split_default)
         if rec is None:
             rejects[flag] += 1
         else:
@@ -427,6 +528,13 @@ def main():
     print(f"  语种: {dict(Counter(r['lang'] for r in final))}")
     print(f"  分类: {dict(Counter(r['category'] for r in final))}")
     print(f"  任务: {dict(Counter(r['task_type'] for r in final).most_common())}")
+    print(f"  划分: {dict(Counter(r['split'] for r in final).most_common())}")
+    subj_filled = sum(1 for r in final if r["subject"])
+    print(
+        f"  学科标注: {subj_filled:,} ({subj_filled / max(len(final), 1):.1%})，"
+        f"难度 {sum(1 for r in final if r['difficulty']):,}，"
+        f"变体 {sum(1 for r in final if r['variant']):,}"
+    )
     fixed = sum(1 for r in final if r["_notes"])
     if fixed:
         print(f"  已修复记录: {fixed:,}")

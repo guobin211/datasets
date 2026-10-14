@@ -15,7 +15,7 @@
 
 ## 2. 中英文类（split/zh-en/）
 
-这一类是评测集主体。现有 `evaluation/open-dataset/eval-formal.csv`（27,916 条）就是它经筛选后的产物——已验证：以 `--norm-dir open-datasets/split/zh-en` 重跑，输出完全一致。
+这一类是评测集主体。现有 `evaluation/upload/eval-formal.csv`（27,916 条）就是它经筛选后的产物——已验证：以 `--norm-dir open-datasets/split/zh-en` 重跑，输出完全一致。
 
 | 数据集 | 条数 | zh | en | lang=空 |
 |---|---|---|---|---|
@@ -128,7 +128,7 @@
 # 1) 中英文类：直接构建评测集（与现有 eval-formal.csv 等价）
 python3 py/eval/build_formal_eval_csv.py \
     --norm-dir open-datasets/split/zh-en \
-    --out evaluation/open-dataset/eval-zh-en.csv
+    --out evaluation/upload/eval-zh-en.csv
 
 # 2) 非中英文类：翻译后落到 split/other-lang-zh/ ，再跑同一条流程
 python3 py/translate/translate_batch.py \
@@ -136,11 +136,11 @@ python3 py/translate/translate_batch.py \
     --out open-datasets/split/other-lang-zh
 python3 py/eval/build_formal_eval_csv.py \
     --norm-dir open-datasets/split/other-lang-zh \
-    --out evaluation/open-dataset/eval-translated.csv
+    --out evaluation/upload/eval-translated.csv
 
 # 3) 合并两类
 python3 py/eval/merge_eval_csv.py eval-zh-en.csv eval-translated.csv \
-    --out evaluation/open-dataset/eval-formal.csv
+    --out evaluation/upload/eval-formal.csv
 ```
 
 > 注意：`--norm-dir` 必须指向**目录**（内含 `<dataset>.jsonl`）。若指向单个合并文件，全部记录会被识别为同一数据集，2,000 条配额会把 22.8 万的池直接砍到 2,000 条。

@@ -4,18 +4,20 @@
  *
  * 输入：evaluation/third-dataset/qa-csv/*.csv，每个文件列为 question, model1, answer1，
  *       每个文件对应一个模型（model1 列值恒定）。
- * 输出：question, context, answer-<model>... 每行一个 question，
+ * 输出：question, context, answer_<model>... 每行一个 question，
  *       各模型的答案填入对应列；无答案的列留空。
+ *       字段名统一下划线连接，模型名中的中横线与点号会被转成下划线。
  */
 import { createReadStream, createWriteStream } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { toFieldSlug } from './utils.ts';
 
 const INPUT_DIR = 'evaluation/third-dataset/qa-csv';
 
 /**
- * model1 原始值 -> 规范化模型名（用于 answer-<model> 列名）。
+ * model1 原始值 -> 规范化模型名（模型标识，内部用；输出列名再经 toFieldSlug）。
  * 值为 null 表示丢弃该数据源（本地目录误入的噪音数据）。
  */
 const MODEL_MAP: Record<string, string | null> = {
@@ -57,10 +59,11 @@ const MODEL_ORDER = [
   'minimax-3',
 ];
 
+/** 模型标识 -> 输出列名。字段名一律下划线，故 opus-4.6 -> answer_opus_4_6。 */
 const HEADER = [
   'question',
   'context',
-  ...MODEL_ORDER.map((m) => `answer-${m}`),
+  ...MODEL_ORDER.map((m) => `answer_${toFieldSlug(m)}`),
 ];
 
 // ---------- CSV 解析（RFC 4180，支持字段内换行与转义引号） ----------

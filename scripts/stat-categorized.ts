@@ -1,0 +1,710 @@
+#!/usr/bin/env tsx
+/**
+ * 统计 training/data/categorized/ 下 4 个会话分类桶的分布情况。
+ *
+ * 输出：
+ *   1. .agents/cache/categorized-stats.json   结构化统计结果（可复用）
+ *   2. training/data/categorized-stats.html   自包含 ECharts 看板（浅色主题）
+ *
+ * 用法：
+ *   npx tsx scripts/stat-categorized.ts [--root training/data/categorized]
+ *
+ * 设计要点：
+ *   - 全量流式读取（createReadStream + readline），1.6G 数据不落内存
+ *   - 只抽取统计所需字段，不构造中间对象数组
+ *   - ECharts 本地 vendor 化，断网可看；同时带 CDN 回退
+ */
+
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
+import { mkdir, readdir, stat, writeFile, copyFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, "..");
+
+/** 4 个分类桶，顺序即展示顺序。 */
+const BUCKETS = [
+  "question",
+  "question-answer",
+  "question-answer-tool-call",
+  "question-multi",
+] as const;
+
+type BucketName = (typeof BUCKETS)[number];
+
+/** 桶的中文名与一句话说明，用于看板标注。 */
+const BUCKET_META: Record<BucketName, { label: string; desc: string }> = {
+  question: {
+    label: "纯提问",
+    desc: "仅保留用户真实提问，过滤 tool_result；每条会话都会落到此桶",
+  },
+  "question-answer": {
+    label: "单轮问答",
+    desc: "单轮、无工具调用",
+  },
+  "question-answer-tool-call": {
+    label: "单轮+工具",
+    desc: "单轮、带 tool_use / tool 消息",
+  },
+  "question-multi": {
+    label: "多轮对话",
+    desc: "real_user >= 2",
+  },
+};
+
+/** 对话轮次（user 消息数）分桶。 */
+const TURN_BUCKETS = ["1", "2", "3-4", "5-8", "9-16", ">16"] as const;
+/** 单条会话的消息数分桶。 */
+const MSG_BUCKETS = ["1", "2", "3", "4-6", "7-12", "13-24", ">24"] as const;
+/** 单条会话的文本量（字符）分桶。 */
+const CHAR_BUCKETS = [
+  "<1K",
+  "1K-4K",
+  "4K-16K",
+  "16K-64K",
+  "64K-256K",
+  ">256K",
+] as const;
+
+type Counters = {
+  records: number;
+  badLines: number;
+  bytes: number;
+  chars: number;
+  msgTotal: number;
+  roles: Map<string, number>;
+  msgCount: Map<string, number>;
+  turns: Map<string, number>;
+  charSize: Map<string, number>;
+  lang: Map<string, number>;
+  sources: Map<string, number>;
+};
+
+function newCounters(): Counters {
+  return {
+    records: 0,
+    badLines: 0,
+    bytes: 0,
+    chars: 0,
+    msgTotal: 0,
+    roles: new Map(),
+    msgCount: new Map(),
+    turns: new Map(),
+    charSize: new Map(),
+    lang: new Map(),
+    sources: new Map(),
+  };
+}
+
+function bump(m: Map<string, number>, k: string, n = 1): void {
+  m.set(k, (m.get(k) ?? 0) + n);
+}
+
+/** 把数值映射进给定的有序分桶键。 */
+function bucketOf(v: number, edges: number[], keys: readonly string[]): string {
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i];
+    if (e !== undefined && v < e) return keys[i] ?? keys[keys.length - 1] ?? "?";
+  }
+  return keys[keys.length - 1] ?? "?";
+}
+
+const TURN_EDGES = [2, 3, 5, 9, 17];
+const MSG_EDGES = [2, 3, 4, 7, 13, 25];
+const CHAR_EDGES = [1024, 4096, 16384, 65536, 262144];
+
+/** content 可能是 string，也可能是 block 数组（text / tool_use / tool_result …）。 */
+function contentChars(content: unknown): number {
+  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return 0;
+  let n = 0;
+  for (const blk of content) {
+    if (typeof blk === "string") {
+      n += blk.length;
+    } else if (blk && typeof blk === "object") {
+      const b = blk as Record<string, unknown>;
+      if (typeof b.text === "string") n += b.text.length;
+      else if (typeof b.content === "string") n += b.content.length;
+      else if (b.input !== undefined) n += JSON.stringify(b.input).length;
+    }
+  }
+  return n;
+}
+
+/** 取一段纯文本用于语种判断。 */
+function contentText(content: unknown, limit: number): string {
+  if (typeof content === "string") return content.slice(0, limit);
+  if (!Array.isArray(content)) return "";
+  let s = "";
+  for (const blk of content) {
+    if (typeof blk === "string") {
+      s += blk;
+    } else if (blk && typeof blk === "object") {
+      const b = blk as Record<string, unknown>;
+      if (typeof b.text === "string") s += b.text;
+      else if (typeof b.content === "string") s += b.content;
+    }
+    if (s.length >= limit) break;
+  }
+  return s.slice(0, limit);
+}
+
+/** CJK 基本区 + 扩展 A，用于语种启发式判断。 */
+const CJK = /[一-鿿㐀-䶿]/g;
+
+/** 依据 CJK 字符占比粗判语种：>=15% 判中文，否则英文，空文本归 other。 */
+function detectLang(text: string): string {
+  if (!text.trim()) return "other";
+  const cjk = text.match(CJK)?.length ?? 0;
+  const sample = text.slice(0, 800);
+  if (sample.length === 0) return "other";
+  return cjk / sample.length >= 0.15 ? "zh" : "en";
+}
+
+/** real user = role=user 且 content 非纯 tool_result，与 cate-jsonl.ts 的分类口径一致。 */
+function isRealUser(content: unknown): boolean {
+  if (typeof content === "string") return content.trim().length > 0;
+  if (!Array.isArray(content) || content.length === 0) return false;
+  return !content.every(
+    (blk) =>
+      !!blk &&
+      typeof blk === "object" &&
+      (blk as Record<string, unknown>).type === "tool_result",
+  );
+}
+
+interface RawRecord {
+  messages?: unknown;
+  source_file?: unknown;
+}
+
+async function scanFile(path: string, c: Counters) {
+  const st = await stat(path);
+  c.bytes += st.size;
+  // source_file 字段是规范的数据源名；缺失时回退用文件名
+  const fileKey = basename(path, ".jsonl");
+
+  const rl = createInterface({
+    input: createReadStream(path, { encoding: "utf-8" }),
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
+
+  for await (const line of rl) {
+    if (!line) continue;
+    let rec: RawRecord;
+    try {
+      rec = JSON.parse(line) as RawRecord;
+    } catch {
+      // 坏行跳过但计数：历史产物里存在未转义换行导致的物理断行
+      c.badLines++;
+      continue;
+    }
+    c.records++;
+
+    const rawSrc = typeof rec.source_file === "string" ? rec.source_file : "";
+    bump(c.sources, rawSrc || fileKey);
+
+    const msgs = Array.isArray(rec.messages) ? rec.messages : [];
+    c.msgTotal += msgs.length;
+    bump(c.msgCount, bucketOf(msgs.length, MSG_EDGES, MSG_BUCKETS));
+
+    let chars = 0;
+    let turns = 0;
+    let firstUser = "";
+    for (const m of msgs) {
+      if (!m || typeof m !== "object") continue;
+      const msg = m as Record<string, unknown>;
+      const role = typeof msg.role === "string" ? msg.role : "unknown";
+      bump(c.roles, role);
+      chars += contentChars(msg.content);
+      if (role === "user" && isRealUser(msg.content)) {
+        turns++;
+        if (!firstUser) firstUser = contentText(msg.content, 800);
+      }
+    }
+    c.chars += chars;
+    bump(c.turns, bucketOf(turns, TURN_EDGES, TURN_BUCKETS));
+    bump(c.charSize, bucketOf(chars, CHAR_EDGES, CHAR_BUCKETS));
+    bump(c.lang, detectLang(firstUser));
+  }
+  rl.close();
+}
+
+/** Map 转 [[k,v]...] 并按数量降序。 */
+function sorted(m: Map<string, number>): [string, number][] {
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+/** 按给定键序补齐，保证各桶的分桶列对齐（缺失填 0）。 */
+function align(m: Map<string, number>, keys: readonly string[]): number[] {
+  return keys.map((k) => m.get(k) ?? 0);
+}
+
+function fmtBytes(n: number): string {
+  if (n >= 1 << 30) return (n / (1 << 30)).toFixed(2) + " GB";
+  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(1) + " MB";
+  if (n >= 1 << 10) return (n / (1 << 10)).toFixed(0) + " KB";
+  return n + " B";
+}
+
+interface BucketOut {
+  name: string;
+  label: string;
+  desc: string;
+  records: number;
+  bad_lines: number;
+  bytes: number;
+  bytes_human: string;
+  chars: number;
+  avg_chars: number;
+  avg_msgs: number;
+  roles: [string, number][];
+  msg_count: { keys: string[]; values: number[] };
+  turns: { keys: string[]; values: number[] };
+  char_size: { keys: string[]; values: number[] };
+  lang: [string, number][];
+  sources: [string, number][];
+}
+
+async function main(): Promise<void> {
+  const { values } = parseArgs({
+    options: {
+      root: { type: "string", default: join(ROOT, "training", "data", "categorized") },
+      out: { type: "string", default: join(ROOT, "training", "data", "categorized-stats.html") },
+      json: { type: "string", default: join(ROOT, ".agents", "cache", "categorized-stats.json") },
+      echarts: { type: "string", default: join(ROOT, "evaluation", "open-dataset", "vendor", "echarts.min.js") },
+      "top-source": { type: "string", default: "14" },
+    },
+  });
+
+  const rootDir = resolve(values.root ?? ".");
+  const outHtml = resolve(values.out ?? ".");
+  const outJson = resolve(values.json ?? ".");
+  const echartsSrc = resolve(values.echarts ?? ".");
+  const topSource = Number(values["top-source"] ?? "14");
+
+  const perBucket = new Map<BucketName, Counters>();
+
+  for (const b of BUCKETS) {
+    const dir = join(rootDir, b);
+    let files: string[];
+    try {
+      files = (await readdir(dir))
+        .filter((f) => f.endsWith(".jsonl"))
+        .sort()
+        .map((f) => join(dir, f));
+    } catch {
+      console.warn(`[warn] 目录不存在，跳过：${dir}`);
+      continue;
+    }
+    const bc = newCounters();
+    perBucket.set(b, bc);
+    for (const f of files) {
+      await scanFile(f, bc);
+    }
+    console.log(
+      `[ok] ${b.padEnd(26)} ${bc.records.toLocaleString()} 条  ${fmtBytes(bc.bytes)}` +
+        (bc.badLines ? `  ⚠ 坏行 ${bc.badLines}` : ""),
+    );
+  }
+
+  // ---- 汇总为输出结构 ----
+  const buckets: BucketOut[] = [];
+  for (const b of BUCKETS) {
+    const c = perBucket.get(b);
+    if (!c) continue;
+    buckets.push({
+      name: b,
+      label: BUCKET_META[b].label,
+      desc: BUCKET_META[b].desc,
+      records: c.records,
+      bad_lines: c.badLines,
+      bytes: c.bytes,
+      bytes_human: fmtBytes(c.bytes),
+      chars: c.chars,
+      avg_chars: c.records ? Math.round(c.chars / c.records) : 0,
+      avg_msgs: c.records ? +(c.msgTotal / c.records).toFixed(1) : 0,
+      roles: sorted(c.roles),
+      msg_count: { keys: [...MSG_BUCKETS], values: align(c.msgCount, MSG_BUCKETS) },
+      turns: { keys: [...TURN_BUCKETS], values: align(c.turns, TURN_BUCKETS) },
+      char_size: { keys: [...CHAR_BUCKETS], values: align(c.charSize, CHAR_BUCKETS) },
+      lang: sorted(c.lang),
+      sources: sorted(c.sources).slice(0, topSource),
+    });
+  }
+
+  // 全源维度（用于源 × 桶矩阵）
+  const allSources = new Map<string, Map<string, number>>();
+  for (const b of BUCKETS) {
+    const c = perBucket.get(b);
+    if (!c) continue;
+    for (const [src, n] of c.sources) {
+      let row = allSources.get(src);
+      if (!row) {
+        row = new Map();
+        allSources.set(src, row);
+      }
+      row.set(b, n);
+    }
+  }
+  const sourceMatrix = [...allSources.entries()]
+    .map(([src, row]) => ({
+      source: src,
+      total: [...row.values()].reduce((a, x) => a + x, 0),
+      byBucket: Object.fromEntries(BUCKETS.map((b) => [b, row.get(b) ?? 0])),
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, topSource);
+
+  const totalRecords = buckets.reduce((a, b) => a + b.records, 0);
+  const totalBytes = buckets.reduce((a, b) => a + b.bytes, 0);
+  const totalChars = buckets.reduce((a, b) => a + b.chars, 0);
+
+  const stats = {
+    generated_at: new Date().toISOString().slice(0, 16).replace("T", " "),
+    root: rootDir,
+    total: {
+      records: totalRecords,
+      bad_lines: buckets.reduce((a, b) => a + b.bad_lines, 0),
+      bytes: totalBytes,
+      bytes_human: fmtBytes(totalBytes),
+      chars: totalChars,
+      sources: allSources.size,
+    },
+    buckets,
+    source_matrix: sourceMatrix,
+    source_total: allSources.size,
+  };
+
+  await mkdir(dirname(outJson), { recursive: true });
+  await writeFile(outJson, JSON.stringify(stats, null, 2), "utf-8");
+  console.log(`\n[ok] JSON  → ${outJson}`);
+
+  // ECharts vendor 化：复制到产物同目录的 vendor/，HTML 优先引用本地
+  const vendorDir = join(dirname(outHtml), "vendor");
+  let localEcharts = "vendor/echarts.min.js";
+  try {
+    await mkdir(vendorDir, { recursive: true });
+    await copyFile(echartsSrc, join(vendorDir, "echarts.min.js"));
+  } catch (e) {
+    console.warn(`[warn] ECharts 本地化失败，仅依赖 CDN：${String(e)}`);
+    localEcharts = "https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js";
+  }
+
+  const html = renderHtml(stats, localEcharts);
+  await mkdir(dirname(outHtml), { recursive: true });
+  await writeFile(outHtml, html, "utf-8");
+  console.log(`[ok] HTML  → ${outHtml}  (${(html.length / 1024).toFixed(0)} KB)`);
+}
+
+// ---------------------------------------------------------------- HTML 渲染
+
+function renderHtml(stats: unknown, echartsSrc: string): string {
+  const data = JSON.stringify(stats).replace(/</g, "\\u003c");
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>训练数据分类分布统计</title>
+<script src="${echartsSrc}"></script>
+<script>
+// 本地 vendor 缺失（如 .gitignore 未提交）时回退 CDN
+if (typeof echarts === 'undefined') {
+  document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"><\\/script>');
+}
+</script>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --border: #e5e7eb;
+    --text: #111827; --muted: #6b7280; --accent: #2563eb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 1480px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi .v { font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
+  .kpi .k { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px 8px; }
+  .card.wide { grid-column: 1 / -1; }
+  .card h3 { font-size: 14px; margin: 0 0 2px; font-weight: 600; }
+  .card p { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+  .chart { width: 100%; height: 320px; }
+  .chart.tall { height: 460px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .note { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 12px 16px; margin-top: 20px; font-size: 13px; }
+  .note b { color: #92400e; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>训练数据分类分布统计</h1>
+  <div class="sub" id="sub"></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="grid" id="grid"></div>
+  <div class="note" id="note"></div>
+</div>
+
+<script id="stats-data" type="application/json">${data}</script>
+<script>
+const S = JSON.parse(document.getElementById('stats-data').textContent);
+const B = S.buckets;
+const LABEL = {}; B.forEach(b => LABEL[b.name] = b.label);
+const PALETTE = ['#2563eb','#0ea5e9','#14b8a6','#f59e0b','#ef4444','#8b5cf6','#10b981','#f97316','#64748b','#ec4899'];
+const fmt = n => n.toLocaleString('zh-CN');
+const pct = n => (n / S.total.records * 100).toFixed(1) + '%';
+
+document.getElementById('sub').textContent =
+  '数据源 ' + S.root + '　·　生成于 ' + S.generated_at;
+
+const big = B.slice().sort((a, b) => b.records - a.records)[0];
+document.getElementById('kpis').innerHTML = [
+  ['会话总数', fmt(S.total.records), '4 个分类桶合计'],
+  ['磁盘占用', S.total.bytes_human, 'JSONL 原始体积'],
+  ['文本总量', (S.total.chars / 1e9).toFixed(2) + 'G', '全部消息字符数'],
+  ['数据源', S.total.sources, '去重后的 source_file 数'],
+  ['最大桶', LABEL[big.name], pct(big.records) + ' 的会话'],
+  ['解析失败行', fmt(S.total.bad_lines), S.total.bad_lines ? '未转义换行导致的断行' : '无坏行'],
+].map(x => '<div class="kpi"><div class="v"' + (x[0] === '解析失败行' && S.total.bad_lines ? ' style="color:#dc2626"' : '') + '>' + x[1] + '</div><div class="k">' + x[0] + '　' + x[2] + '</div></div>').join('');
+
+const grid = document.getElementById('grid');
+function card(title, desc, option, cls) {
+  const d = document.createElement('div');
+  d.className = 'card' + (cls ? ' ' + cls : '');
+  d.innerHTML = '<h3>' + title + '</h3><p>' + desc + '</p><div class="chart' + (cls === 'tall' ? ' tall' : '') + '"></div>';
+  grid.appendChild(d);
+  const ch = echarts.init(d.querySelector('.chart'));
+  ch.setOption(option);
+  window.addEventListener('resize', () => ch.resize());
+  return ch;
+}
+const axis = {
+  axisLine: { lineStyle: { color: '#d1d5db' } },
+  axisLabel: { color: '#4b5563', fontSize: 11 },
+  splitLine: { lineStyle: { color: '#f1f3f5' } },
+};
+const tip = { trigger: 'axis', axisPointer: { type: 'shadow' } };
+
+// 1. 条数占比（环）
+const byRec = B.map(b => ({ name: LABEL[b.name], value: b.records }));
+card('分类桶条数占比', '按会话条数；question 桶为派生桶，每条会话都会落入', {
+  tooltip: Object.assign({ trigger: 'item', formatter: p => p.name + '：' + fmt(p.value) + ' 条（' + p.percent + '%）' }, {}),
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  series: [{
+    type: 'pie', radius: ['42%', '68%'], center: ['50%', '46%'],
+    itemStyle: { borderColor: '#fff', borderWidth: 2 },
+    label: { formatter: '{b}\\n{d}%', color: '#374151', fontSize: 11 },
+    data: byRec,
+  }],
+  color: PALETTE,
+});
+
+// 2. 条数占比 vs 文本量占比（双条对比）
+card('条数占比 vs 文本量占比', '同一桶在「会话数」与「文本量」上的占比差异，反映单条会话的体积', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 24, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'category', data: B.map(b => LABEL[b.name]) }, axis),
+  yAxis: Object.assign({ type: 'value', max: 100, name: '%' }, axis),
+  series: [
+    { name: '会话数占比', type: 'bar', data: B.map(b => +(b.records / S.total.records * 100).toFixed(1)), itemStyle: { color: '#2563eb' } },
+    { name: '文本量占比', type: 'bar', data: B.map(b => +(b.chars / S.total.chars * 100).toFixed(1)), itemStyle: { color: '#f59e0b' } },
+  ],
+});
+
+// 3. 各桶平均指标
+card('各桶平均体积', '平均每条会话的消息数与字符数（对数轴）', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 8, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'category', data: B.map(b => LABEL[b.name]) }, axis),
+  yAxis: [
+    Object.assign({ type: 'value', name: '消息数' }, axis),
+    Object.assign({ type: 'log', name: '字符数', min: 100 }, axis),
+  ],
+  series: [
+    { name: '平均消息数', type: 'bar', data: B.map(b => b.avg_msgs), itemStyle: { color: '#0ea5e9' } },
+    { name: '平均字符数', type: 'line', yAxisIndex: 1, data: B.map(b => b.avg_chars), smooth: true, symbolSize: 8, itemStyle: { color: '#ef4444' } },
+  ],
+});
+
+// 4. 消息数分布 —— 对数轴分组柱，避免 question 桶数量级压制其他桶
+card('单条会话的消息数分布', '对数纵轴；各桶会话深度构成差异极大，线性轴下小桶不可见', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 24, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'category', data: B[0].msg_count.keys }, axis),
+  yAxis: Object.assign({ type: 'log', name: '条数', min: 1 }, axis),
+  series: B.map((b, i) => ({
+    name: LABEL[b.name], type: 'bar',
+    // log 轴不画 0 值，置 null 避免落到底部造成误导
+    data: b.msg_count.values.map(v => v || null),
+    itemStyle: { color: PALETTE[i % PALETTE.length] },
+  })),
+});
+
+// 5. 角色构成
+const roleKeys = [...new Set(B.flatMap(b => b.roles.map(r => r[0])))];
+card('消息角色构成', '各桶消息按 role 拆分（百分比）', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 24, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'category', data: B.map(b => LABEL[b.name]) }, axis),
+  yAxis: Object.assign({ type: 'value', max: 100, name: '%' }, axis),
+  series: roleKeys.map((rk, i) => ({
+    name: rk, type: 'bar', stack: 'role', barWidth: 26,
+    data: B.map(b => {
+      const tot = b.roles.reduce((a, x) => a + x[1], 0) || 1;
+      const hit = b.roles.find(r => r[0] === rk);
+      return +((hit ? hit[1] : 0) / tot * 100).toFixed(1);
+    }),
+    itemStyle: { color: PALETTE[i % PALETTE.length] },
+  })),
+});
+
+// 6. 对话轮次分布
+card('对话轮次分布', '按「真实 user 提问数」分桶（排除纯 tool_result），反映单轮 vs 多轮', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 24, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'category', data: B.map(b => LABEL[b.name]) }, axis),
+  yAxis: Object.assign({ type: 'value', max: 100, name: '%' }, axis),
+  series: B[0].turns.keys.map((k, i) => ({
+    name: k + ' 轮', type: 'bar', stack: 'turn', barWidth: 26,
+    data: B.map(b => {
+      const tot = b.turns.values.reduce((a, x) => a + x, 0) || 1;
+      return +(b.turns.values[i] / tot * 100).toFixed(1);
+    }),
+    itemStyle: { color: PALETTE[i % PALETTE.length] },
+  })),
+});
+
+// 7. 文本量分桶
+card('单条会话文本量分布', '按字符数分桶（百分比），长会话集中在哪一层', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 24, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'category', data: B.map(b => LABEL[b.name]) }, axis),
+  yAxis: Object.assign({ type: 'value', max: 100, name: '%' }, axis),
+  series: B[0].char_size.keys.map((k, i) => ({
+    name: k, type: 'bar', stack: 'ch', barWidth: 26,
+    data: B.map(b => {
+      const tot = b.char_size.values.reduce((a, x) => a + x, 0) || 1;
+      return +(b.char_size.values[i] / tot * 100).toFixed(1);
+    }),
+    itemStyle: { color: PALETTE[i % PALETTE.length] },
+  })),
+});
+
+// 8. 语种分布
+card('语种分布', '按首条 user 消息的 CJK 占比判断（>=15% 判中文）', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 24, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'category', data: B.map(b => LABEL[b.name]) }, axis),
+  yAxis: Object.assign({ type: 'value', name: '条数' }, axis),
+  series: ['zh', 'en', 'other'].map((lk, i) => ({
+    name: lk === 'zh' ? '中文' : lk === 'en' ? '英文' : '其他/空',
+    type: 'bar', stack: 'lang', barWidth: 26,
+    data: B.map(b => {
+      const hit = b.lang.find(l => l[0] === lk);
+      return hit ? hit[1] : 0;
+    }),
+    itemStyle: { color: PALETTE[i % PALETTE.length] },
+  })),
+});
+
+// 9. 源 × 桶（Top N，横向堆叠）
+const SM = S.source_matrix;
+const srcNames = SM.map(s => s.source);
+card('数据源 × 分类桶', 'Top ' + SM.length + ' 个数据源的会话在各桶的分布（共 ' + S.source_total + ' 个源）', {
+  tooltip: tip,
+  legend: { bottom: 0, textStyle: { color: '#4b5563' } },
+  grid: { left: 8, right: 30, top: 10, bottom: 40, containLabel: true },
+  xAxis: Object.assign({ type: 'value' }, axis),
+  yAxis: Object.assign({ type: 'category', data: srcNames.slice().reverse(), axisLabel: { color: '#4b5563', fontSize: 10 } }, axis),
+  series: B.map((b, i) => ({
+    name: LABEL[b.name], type: 'bar', stack: 'src', barWidth: 14,
+    data: SM.slice().reverse().map(s => s.byBucket[b.name] || 0),
+    itemStyle: { color: PALETTE[i % PALETTE.length] },
+  })),
+}, 'tall');
+
+// 10. 桑基：源 → 桶
+(function () {
+  const nodes = []; const seen = new Set();
+  const links = [];
+  SM.forEach(s => {
+    if (!seen.has(s.source)) { seen.add(s.source); nodes.push({ name: s.source }); }
+    B.forEach(b => {
+      const v = s.byBucket[b.name] || 0;
+      if (v <= 0) return;
+      const tn = LABEL[b.name];
+      if (!seen.has(tn)) { seen.add(tn); nodes.push({ name: tn }); }
+      links.push({ source: s.source, target: tn, value: v });
+    });
+  });
+  card('数据流向：数据源 → 分类桶', '每条流的宽度 = 会话条数（Top ' + SM.length + ' 源）', {
+    tooltip: { trigger: 'item', formatter: p => p.dataType === 'edge'
+      ? p.data.source + ' → ' + p.data.target + '<br/>' + fmt(p.data.value) + ' 条'
+      : p.name + '：' + fmt(p.value || 0) + ' 条' },
+    series: [{
+      type: 'sankey', left: 8, right: 120, top: 10, bottom: 10,
+      nodeWidth: 14, nodeGap: 6,
+      label: { color: '#374151', fontSize: 11 },
+      data: nodes, links: links,
+    }],
+    color: PALETTE,
+  }, 'tall');
+})();
+
+// 11. 明细表
+(function () {
+  const d = document.createElement('div');
+  d.className = 'card wide';
+  const rows = B.map(b => {
+    const zh = (b.lang.find(l => l[0] === 'zh') || [0, 0])[1];
+    return '<tr><td><b>' + LABEL[b.name] + '</b> <span style="color:#6b7280">' + b.name + '</span></td>' +
+      '<td>' + fmt(b.records) + '</td><td>' + pct(b.records) + '</td>' +
+      '<td>' + b.bytes_human + '</td>' +
+      '<td>' + (b.chars / 1e6).toFixed(1) + 'M</td>' +
+      '<td>' + b.avg_msgs + '</td><td>' + fmt(b.avg_chars) + '</td>' +
+      '<td>' + (zh / b.records * 100).toFixed(0) + '%</td></tr>';
+  }).join('');
+  d.innerHTML = '<h3>各桶明细</h3><p>' + B.map(b => b.name + '：' + b.desc).join('　|　') + '</p>' +
+    '<table><thead><tr><th>分类桶</th><th>会话数</th><th>占比</th><th>磁盘</th><th>文本量</th><th>平均消息数</th><th>平均字符数</th><th>中文占比</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  grid.appendChild(d);
+})();
+
+const q = B.find(b => b.name === 'question');
+const others = B.filter(b => b.name !== 'question').reduce((a, b) => a + b.records, 0);
+document.getElementById('note').innerHTML =
+  '<b>口径说明</b>：question 桶是派生桶——每条会话都会输出一份「仅用户真实提问」的副本，因此 ' +
+  'question 的 ' + fmt(q.records) + ' 条 ≈ 其余三桶之和 ' + fmt(others) + ' 条（差 ' + fmt(q.records - others) + ' 条）。' +
+  '做微调配比时请以「其余三桶」为分母计算占比，避免把同一批会话重复计一次。' +
+  '<br><b>语种为启发式判断</b>：仅取首条真实 user 消息前 800 字符，按 CJK 占比 >=15% 判中文，用于看整体倾向，不做精确标注。' +
+  (S.total.bad_lines
+    ? '<br><b>⚠ 解析失败行 ' + S.total.bad_lines + ' 条</b>：集中在 question 桶的 ' +
+      'claude-sonnet-4-6-opus-4-8-mythos-5-fable-5-openai-finetuning-dataset.jsonl，' +
+      '原因是历史产物写入时 user 文本里的换行未转义，一条记录被物理切成多行（约合 2 条真实记录）。' +
+      '当前 utils.ts 已用 JSON.stringify 写入，重跑该数据源的分类即可消除。'
+    : '');
+</script>
+</body>
+</html>`;
+}
+
+await main();

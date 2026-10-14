@@ -59,7 +59,7 @@
 | option_missing_for_letter | 8 |
 | answer_not_in_options | 1 |
 
-## 4. 产物实测（`evaluation/open-dataset/eval-formal.csv`）
+## 4. 产物实测（`evaluation/upload/eval-formal.csv`）
 
 - 行数：**27,916**（脚本本次算出 27,916）
 - 语种：{'zh': 10772, 'en': 17144}

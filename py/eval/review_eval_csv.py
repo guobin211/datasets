@@ -9,7 +9,7 @@ from pathlib import Path
 
 csv.field_size_limit(sys.maxsize)
 
-BASE = Path(__file__).resolve().parents[2] / "evaluation" / "open-dataset"
+BASE = Path(__file__).resolve().parents[2] / "evaluation" / "upload"
 
 
 def scan(path, check_quality=False):

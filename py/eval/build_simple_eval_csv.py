@@ -117,7 +117,7 @@ def load_gsm8k(split: str = "test") -> list[dict]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="evaluation/open-dataset/eval-simple-500.csv")
+    ap.add_argument("--out", default="evaluation/upload/eval-simple-500.csv")
     ap.add_argument(
         "--max-steps", type=int, default=3, help="英文补充题的推理步数上限（默认 3）"
     )

@@ -7,12 +7,13 @@
 /cache
 
 # ===== 数据构建产物（可由 scripts/ 重新生成，不入库）=====
+# 成品评测集已统一归拢到 evaluation/upload/，路径改动时此处需同步
 evaluation/third-dataset/qa-csv/
-evaluation/third-dataset/eval-dataset-full.csv
-evaluation/third-dataset/eval-dataset-50k.csv
-evaluation/third-dataset/eval-dataset-6k.csv
-evaluation/open-dataset/eval-simple-1000.csv
-evaluation/open-dataset/eval-simple-500.csv
+evaluation/upload/eval-dataset-full.csv
+evaluation/upload/eval-dataset-50k.csv
+evaluation/upload/eval-dataset-6k.csv
+evaluation/upload/eval-simple-1000.csv
+evaluation/upload/eval-simple-500.csv
 
 # ===== 外部开源数据集（体积大，不入库）=====
 open-datasets/
