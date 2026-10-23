@@ -1,7 +1,7 @@
 # 数据集统计（Dataset Stats）
 
 > 本项目（`/Users/guobin/tencent/datasets`）全部数据的规模、结构与来源汇总。
-> 更新日期：2026-10-09。数据口径以本文件标注为准，重新构建产物后请同步刷新。
+> 更新日期：2026-10-16。数据口径以本文件标注为准，重新构建产物后请同步刷新。
 > 结构约定：第 1 章为项目自有数据；第 2 章为外部**评测基准**；第 3 章为外部**训练数据集**；每行标注「下载」「抽样」状态。
 
 ---
@@ -202,7 +202,7 @@ python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
 
 ## 2. 评测基准（Evaluation Benchmarks）
 
-> 外部评测基准共 **40 个**：✅ 已下载 23 · ⬜ 未下载 17 · 已抽样 0（截至 2026-09-18 实测）。
+> 外部评测基准共 **49 个**：✅ 已下载 27 · ⬜ 未下载 22 · 已抽样 0（截至 2026-10-16 实测）。
 > 排序规则：类别内已下载在前、未下载在后；未下载按类别内重要度排。来源链接指向官方仓库。
 
 ### 2.1 数学推理（含多语言）
@@ -251,8 +251,9 @@ python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
 
 | 数据集 | 规模与特点 | 下载 | 抽样 | 来源 |
 |---|---|---|---|---|
-| **BFCL (Berkeley Function Calling)** | 单步/多步/并行工具调用，AST 级参数解析校验，工具调用事实标准；虚拟 API 与真实生态有距离 | ⬜ | ⬜ | — |
-| **Terminal-Bench / OSWorld** | 真实终端环境 / 操作系统 GUI 操作，测多步任务规划与执行稳健性；成本最高、依赖环境隔离，当前区分度显著 | ⬜ | ⬜ | — |
+| **APEX-Agents (Mercor)** | 480 任务 × 33 world（投行 160 / 咨询 160 / 法律 160），专家构建的长程跨应用专业服务任务（文档/表格/PDF/邮件/日历），rubric 二元判分（均值 4.06 条/任务）+ gold 参考答案。⚠️ gated=auto 需 HF 授权；CC-BY 4.0 **仅限评测、禁训练**。已下元数据+task_files+gold_files（135M），world 压缩包 8.9G 未下 | ✅ | ⬜ | [HF](https://huggingface.co/datasets/mercor/apex-agents) / [Leaderboard](https://www.mercor.com/apex/apex-agents-leaderboard/) |
+| **BFCL (Berkeley Function Calling)** | 单步/多步/并行工具调用，AST 级参数解析校验，工具调用事实标准；虚拟 API 与真实生态有距离 | ⬜ | ⬜ | [HF](https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard) / [GitHub](https://github.com/ShishirPatil/gorilla) |
+| **Terminal-Bench / OSWorld** | 真实终端环境 / 操作系统 GUI 操作，测多步任务规划与执行稳健性；成本最高、依赖环境隔离，当前区分度显著。数据均已开放：harborframework/terminal-bench（另 2.0/2.1/3.0 版）、xlangai/osworld_v2_assets | ⬜ | ⬜ | [HF Terminal-Bench](https://huggingface.co/datasets/harborframework/terminal-bench) / [HF OSWorld](https://huggingface.co/datasets/xlangai/osworld_v2_assets) |
 
 ### 2.6 长文本与检索
 
@@ -294,6 +295,19 @@ python3 py/eval/build_formal_eval_csv.py --norm-dir open-datasets/split/zh-en \
 | **SciVQR (2026)** | 54 个二级学科多模态科学 VQA（实验图谱、分子结构、微分方程），46% 含专家解答，长推理链路 | ⬜ | ⬜ | — |
 | **PhyArena / HiPhO** | 13 场 2024-25 物理奥赛，官方评分与人类奖牌线对照，多模态图题，物理推理标杆 | ⬜ | ⬜ | — |
 | **ChemBench (持续更新版)** | 合成路线逆向规划、立体化学、反应动力学、实验室安全全领域覆盖 | ⬜ | ⬜ | — |
+
+### 2.9 专业服务（金融/法律/咨询）
+
+| 数据集 | 规模与特点 | 下载 | 抽样 | 来源 |
+|---|---|---|---|---|
+| **LegalBench** | 162 个法律推理子任务（商标/合同/NDA/司法解释/公民资格…），封闭标签分类设计（全部 answer_space），协作构建于 40 家机构。91,741 行 | ✅ | ⬜ | [HF](https://huggingface.co/datasets/nguha/legalbench) / [GitHub](https://github.com/HazyResearch/legalbench) |
+| **CUAD** | 510 份美国商业合同 × 41 类条款高亮标注（律师专家），长文本条款抽取；6,702 条有效标注（空高亮=合同无此条款）。合同 PDF 原文未下 | ✅ | ⬜ | [HF](https://huggingface.co/datasets/theatticusproject/cuad) / [官网](https://www.atticusproject.org/cuad/) |
+| **LawBench** | 中文法律能力评测（open-compass，原版 20 任务）；已下 5 任务 × 500 题：司考单选、案例单选、法条/罪名/刑期预测 | ✅ | ⬜ | [HF](https://huggingface.co/datasets/doolayer/LawBench) / [GitHub](https://github.com/open-compass/LawBench) |
+| **APEX-v1-extended (Mercor)** | APEX 前代：投行/管理咨询/大律师/全科医生四职业评测，APEX-Agents 同族，**开放无需授权** | ⬜ | ⬜ | [HF](https://huggingface.co/datasets/mercor/APEX-v1-extended) |
+| **PRBench (ScaleAI)** | 1,100 道专家撰写的金融+法律推理题（114 国），rubric 判分（每题 10–30 条加权标准，共 1.9 万条），与 APEX 同为 rubric-based；顶模分仅 ~0.38 | ⬜ | ⬜ | [HF](https://huggingface.co/datasets/ScaleAI/PRBench) |
+| **apex-accounting (Mercor)** | APEX 家族会计评测，开放 | ⬜ | ⬜ | [HF](https://huggingface.co/datasets/mercor/apex-accounting) |
+| **FinanceBench** | SEC 财报/年报问答（开源界最常用金融基准），开放 | ⬜ | ⬜ | [HF](https://huggingface.co/datasets/PatronusAI/financebench) |
+| **FinEval** | 中文金融从业考试选择题（4,661 题 × 4 类），本土金融知识评测 | ⬜ | ⬜ | [HF](https://huggingface.co/datasets/SUFE-AIFLM-Lab/FinEval) / [GitHub](https://github.com/SUFE-AIFLM-Lab/FinEval) |
 
 ---
 

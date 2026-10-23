@@ -14,6 +14,8 @@ py/
 │   ├── normalize_extra.py     arrow / 杂项 parquet
 │   ├── normalize_math_basic.py（gsm8k / MATH / aqua_rat / mathqa …）
 │   ├── normalize_math_rest.py（asdiv / SVAMP / PolyMath / longbench …）
+│   ├── normalize_apex_agents.py  Mercor APEX-Agents（agent 基准，rubric 入 metadata）
+│   ├── normalize_legal.py     法律类（legalbench / CUAD / LawBench）
 │   ├── split_by_lang.py       归一化产物按语种拆分 → open-datasets/split/
 │   ├── review_normalized.py   归一化产物只读质检报告
 │   ├── _aggregate.py / _show_cn.py / _inspect_cn.py / _validate_cn.py  辅助工具
@@ -31,7 +33,8 @@ py/
 │   │                             → evaluation/open-dataset/eval-category-stats.html（ECharts）
 │   ├── review_eval_csv.py        已产出 CSV 的只读质检报告
 │   └── export_zh_en_by_tasktype.py  按 task_type 导出中英数据
-└── tools/              一次性维护脚本
+└── tools/              维护脚本
+    ├── download_hf_dataset.py  HF 数据集直连下载器（绕开本地沙箱钩子、gated/分页/断点续传）
     ├── fix_doc_24.py          docs/24 文档批量修复
     └── fix_docs_batch.py      docs/ 多文档批量修复
 ```

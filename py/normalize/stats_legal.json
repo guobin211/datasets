@@ -1,0 +1,27 @@
+{
+  "legalbench": {
+    "dataset": "legalbench",
+    "rows": 91741,
+    "size_mb": 126.62,
+    "skipped": {
+      "ssla_company_defendants: empty_answer": 9
+    },
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/legalbench.jsonl"
+  },
+  "CUAD": {
+    "dataset": "CUAD",
+    "rows": 6702,
+    "size_mb": 448.34,
+    "skipped": {
+      "no_highlight_answer": 14208
+    },
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/CUAD.jsonl"
+  },
+  "LawBench": {
+    "dataset": "LawBench",
+    "rows": 2500,
+    "size_mb": 4.56,
+    "skipped": {},
+    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/LawBench.jsonl"
+  }
+}

@@ -48,6 +48,7 @@ EVAL_SPLITS = TEST_SPLITS + (UNSPECIFIED_SPLIT,)
 DEFAULT_CAP = 2000
 SPECIAL_CAP = {
     "longbench-data": 500,  # context 中位 31K 字符
+    "CUAD": 300,  # context 为整份合同，均值 5.2 万字符
 }
 
 # ---- subject 三元拆分：学科 / 难度 / 变体 ----
@@ -60,6 +61,10 @@ SUBJECT_KEYS_BY_DS: dict[str, tuple[str, ...]] = {
     "AlignBench": ("category",),
     "longbench-data": ("subtask",),
     "mathqa": ("category",),
+    "legalbench": ("task_name",),
+    "LawBench": ("task_name",),
+    "CUAD": ("clause_type",),
+    "apex-agents": ("domain",),
 }
 # 语义是「难度等级」而非学科的 key
 DIFFICULTY_KEYS = ("level",)
@@ -336,6 +341,7 @@ def clean_record(
         "_notes": notes,
         "_nq": norm_question(q),
         "_id": str(r.get("id") or ""),
+        "_ctx_hash": hashlib.md5(ctx.encode()).hexdigest()[:12] if ctx else "",
     }, ("fixed:" + ",".join(notes) if notes else "ok")
 
 
@@ -414,6 +420,12 @@ def main():
         default=SPECIAL_CAP["longbench-data"],
         help="longbench 配额（context 体积大，默认 500）",
     )
+    ap.add_argument(
+        "--caps",
+        default="",
+        help="任意数据集单独配额，逗号分隔覆盖 SPECIAL_CAP，"
+        "如 --caps 'CUAD:300,legalbench:1500'（优先级最高）",
+    )
     ap.add_argument("--seed", default="formal-eval-2026", help="采样种子")
     ap.add_argument(
         "--split-policy",
@@ -467,10 +479,12 @@ def main():
         print(f"    {reason:32} {n:>6,}")
 
     # ---- 跨数据集去重 ----
+    # key 含 context 哈希：题干模板完全相同、仅 context（合同/文档）不同的源
+    # （如 CUAD 41 类条款模板 × 510 份合同）若只按题干去重会互相吞掉。
     seen, dedup = set(), []
     dup_count = 0
     for r in cleaned:
-        key = (r["lang"], r["_nq"])
+        key = (r["lang"], r["_nq"], r["_ctx_hash"])
         if key in seen:
             dup_count += 1
             continue
@@ -491,6 +505,18 @@ def main():
             continue
         pools[r["source"]].append(r)
 
+    # 配额解析优先级：--caps > --longbench-cap（仅 longbench）> SPECIAL_CAP > --per-dataset
+    caps = dict(SPECIAL_CAP)
+    if args.longbench_cap != SPECIAL_CAP["longbench-data"]:
+        caps["longbench-data"] = args.longbench_cap
+    if args.caps:
+        for kv in args.caps.split(","):
+            ds_name, _, v = kv.partition(":")
+            if ds_name.strip() and v.strip():
+                caps[ds_name.strip()] = int(v)
+            else:
+                ap.error(f"--caps 格式应为 '数据集:数字'，收到 {kv!r}")
+
     final = []
     print(f"\n{'数据集':26} {'池大小':>9} {'配额':>7} {'取用':>7}")
     print("-" * 56)
@@ -499,7 +525,7 @@ def main():
         if args.no_cap:
             cap = len(pool)
         else:
-            cap = args.longbench_cap if ds == "longbench-data" else args.per_dataset
+            cap = caps.get(ds, args.per_dataset)
         picked = stratified_sample(pool, cap, args.seed, args.split_policy)
         print(f"{ds[:25]:26} {len(pool):>9,} {cap:>7,} {len(picked):>7,}")
         final.extend(picked)

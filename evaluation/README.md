@@ -22,6 +22,7 @@ evaluation/
 | `eval-dataset-100.csv` | 自产 | 100 行（272K，**入库**，非 LFS 小样例） |
 | `eval-dataset.sample.csv` | 自产 | 1 行（2.0K，**入库**，非 LFS 小样例） |
 | `eval-formal.csv` | 开源 | **正式评测集**，27,916 行 / 23 个基准、中英双语、全难度（LFS 入库） |
+| `eval-formal-legal-agent.csv` | 开源 | 专业服务评测集：legalbench 1,500 + LawBench 1,500 + apex-agents 480 + CUAD 300（2026-10 新增 4 源独立成集，列结构与 eval-formal 一致；CUAD 配额 300 因 context 均值 5.2 万字符；重建命令见 git log / COVERAGE 第六章） |
 | `eval-simple-1000.csv` | 开源 | 小学数学简单题 1,000 条（gitignored） |
 | `eval-mcq-zh-en.csv` / `eval-open_qa-zh-en.csv` | 开源 | 按 task_type 导出的选择题 / 开放问答 |
 | `eval-zh-en-full.csv` / `eval-zh-en-full-nolb.csv` | 开源 | 中英全量导出（含 / 不含 longbench） |
