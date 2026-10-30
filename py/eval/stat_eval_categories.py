@@ -15,7 +15,7 @@
         --formal evaluation/open-dataset/eval-formal.csv \
         --simple evaluation/open-dataset/eval-simple-1000.csv \
         --json .agents/cache/eval-category-stats.json \
-        --html evaluation/open-dataset/eval-category-stats.html
+        --html html/eval-category-stats.html
 
 仅依赖标准库（csv / collections / json），无需 pandas。
 """
@@ -526,8 +526,9 @@ def main() -> int:
     )
     ap.add_argument(
         "--html",
-        default="evaluation/open-dataset/eval-category-stats.html",
-        help="ECharts 页面输出路径",
+        default="",
+        help="ECharts 页面输出路径；留空则不生成（全仓库看板统一由 "
+        "scripts/stat-dashboard.ts 合并产出，避免看板重复）",
     )
     ap.add_argument(
         "--echarts",
@@ -559,11 +560,6 @@ def main() -> int:
     with open(json_path, "w", encoding="utf-8") as fp:
         json.dump(stats, fp, ensure_ascii=False, indent=2)
 
-    html_path = abs_path(args.html)
-    os.makedirs(os.path.dirname(html_path), exist_ok=True)
-    with open(html_path, "w", encoding="utf-8") as fp:
-        fp.write(render_html(stats, args.echarts))
-
     f, s = stats["formal"], stats["simple"]
     print(f"[ok] formal  {f['total']} 行  category={dict(f['category'])}")
     print(f"[ok]         task_type={ {t[0]: t[1] for t in f['task_type']} }")
@@ -572,7 +568,15 @@ def main() -> int:
     )
     print(f"[ok] simple  {s['total']} 行  lang={dict(s['lang'])}")
     print(f"[ok] json -> {os.path.relpath(json_path, REPO_ROOT)}")
-    print(f"[ok] html -> {os.path.relpath(html_path, REPO_ROOT)}")
+    if args.html:
+        html_path = abs_path(args.html)
+        os.makedirs(os.path.dirname(html_path) or ".", exist_ok=True)
+        with open(html_path, "w", encoding="utf-8") as fp:
+            fp.write(render_html(stats, args.echarts))
+        print(f"[ok] html -> {os.path.relpath(html_path, REPO_ROOT)}")
+    else:
+        print("[skip] 未指定 --html，跳过单独看板")
+        print("       重建合并看板：npx tsx scripts/stat-dashboard.ts")
     return 0
 
 

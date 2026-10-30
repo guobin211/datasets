@@ -7,20 +7,29 @@
 /cache
 
 # ===== 数据构建产物（可由 scripts/ 重新生成，不入库）=====
-# 成品评测集已统一归拢到 evaluation/upload/，路径改动时此处需同步
+# 成品评测集在 evaluation/upload/，由 .gitattributes 走 Git LFS 入库，此处不忽略
 evaluation/third-dataset/qa-csv/
-evaluation/upload/eval-dataset-full.csv
-evaluation/upload/eval-dataset-50k.csv
-evaluation/upload/eval-dataset-6k.csv
-evaluation/upload/eval-simple-1000.csv
-evaluation/upload/eval-simple-500.csv
 
 # ===== 外部开源数据集（体积大，不入库）=====
 open-datasets/
+# 完整训练集（1.6G，由 scripts/build-consolidated-csv.ts train 重建）
+csv/train.csv
+# 第三方原数据的归一化全量导出（精选后的 eval-formal*.csv 才入库）
+evaluation/upload/eval-zh-en-full.csv
+evaluation/upload/eval-zh-en-full-nolb.csv
+evaluation/upload/eval-mcq-zh-en.csv
+evaluation/upload/eval-open_qa-zh-en.csv
+
+# ===== 环境变量 / 密钥 =====
+.env
+.env.*
+!.env.example
 
 # ===== IDE / 编辑器 =====
 .idea
 .vscode
+.openidea
+.zed
 *.swp
 *.swo
 .DS_Store
@@ -51,8 +60,8 @@ dist
 *.dylib
 *.test
 *.out
-vendor/
-bin/
+vendor
+bin
 coverage.out
 coverage.html
 

@@ -13,7 +13,6 @@ datasets/
 ├── training/                 # 【training】训练阶段（微调输入 + 训练骨架）
 │   ├── data/categorized/     #   微调输入：4 个分类桶（question / question-answer /
 │   │                         #     question-answer-tool-call / question-multi）
-│   ├── data/categorized-stats.html  # 分类桶分布看板（构建产物，gitignored）
 │   ├── config/  scripts/     #   训练配置 / 脚本（骨架，待补）
 │   └── README.md
 │
@@ -21,12 +20,13 @@ datasets/
 │   ├── upload/               #   统一 CSV 出口（所有成品评测集，见 evaluation/README.md）
 │   │   ├── eval-dataset-*.csv    # 自产 16 列模型宽表（full / 50k / 6k / 100 / sample）
 │   │   ├── eval-formal.csv       # 开源正式评测集（中英，全难度）
+│   │   ├── eval-formal-legal-agent.csv  # 法律（legalbench/CUAD/LawBench）+ 智能体（APEX-Agents）评测集
 │   │   ├── eval-simple-1000.csv  # 开源小学数学简单题
 │   │   └── eval-{mcq,open_qa,zh-en-full,zh-en-full-nolb}-zh-en.csv  # 按题型/全量导出
 │   ├── third-dataset/        #   自产中间产物：qa-csv/（16 份单模型 Q&A，gitignored）
-│   │                         #     + eval-question-classify.{html,csv}（问题三维分类）
+│   │                         #     + eval-question-classify*.csv（问题三维分类）
 │   └── open-dataset/         #   开源报告与看板：COVERAGE-STATS.md / SPLIT-REPORT.md /
-│                             #     eval-category-stats.html + vendor/
+│                             #     eval-formal-distribution.png
 │
 ├── open-datasets/            # 【参考】外部开源数据集（gitignored，体积大不入库）
 │
@@ -36,17 +36,21 @@ datasets/
 │   ├── cate-other-jsonl.ts   #   【format】6 种非标准格式分类（自动探测）
 │   ├── extract-qa-csv.ts     #   【evaluation】分类产物 → 单模型 Q&A CSV
 │   ├── build-eval-csv.ts     #   【evaluation】单模型 Q&A → 16 列评测宽表
-│   ├── stat-categorized.ts   #   【stat】分类桶分布看板
 │   ├── classify-eval-questions.ts + question-classifier.ts  # 评测问题三维分类
+│   ├── stat-categorized.ts   #   【stat】分类桶统计（默认仅出 JSON）
+│   ├── stat-dashboard.ts     #   【stat】合并统计看板 → html/dataset-stats.html
+│   │   └── stat-dashboard/   #     绘图片段 train.js / eval.js（按 Tab 拆分）
 │   ├── types.ts / utils.ts   #   共享类型与工具
 │
 ├── py/                       # Python 脚本：开源数据归一化 / 翻译 / 评测集（见 py/README.md）
 │
 ├── docs/                     # 文档：dataset-platform/（本项目）+ tech-reference/（外部参考）
 │
+├── html/                     # 所有生成的 HTML 看板（gitignored）：dataset-stats.html /
+│                             #   eval-question-classify.html + vendor/echarts.min.js
 ├── AGENTS.md                 # 项目开发指引（架构、规则、命令）
 ├── DATASETS.md               # 全量数据规模 / 来源 / 外部数据集清单
-├── package.json / tsconfig.json
+├── package.json / tsconfig.json / pyproject.toml / uv.lock
 └── ...
 ```
 
@@ -62,7 +66,7 @@ third-dataset/ → merge.jsonl → cate-*.ts → training/data/categorized/ ─�
                                          → evaluation/upload/eval-dataset-*.csv
 
 open-datasets/ ── py/normalize/（归一化 → 语种拆分）── py/eval/build_*.py
-                                            → evaluation/upload/eval-{formal,simple-*,*zh-en*}.csv
+                                            → evaluation/upload/eval-{formal*,simple-*,*zh-en*}.csv
 ```
 
 ## 分类桶规则
@@ -88,8 +92,15 @@ tsx scripts/merge-jsonl.ts --root third-dataset
 tsx scripts/cate-jsonl.ts third-dataset/<source>/merge.jsonl        # 标准格式
 tsx scripts/cate-other-jsonl.ts third-dataset/<source>/merge.jsonl  # 非标准格式
 
-# stat：分类桶分布看板
+# stat：分类桶统计（默认仅出 JSON）+ 合并统计看板（html/dataset-stats.html）
 npx tsx scripts/stat-categorized.ts
+npx tsx scripts/stat-dashboard.ts
+
+# classify：评测问题三维分类（全量 15.6 万条需加大堆内存；--compare 额外算子集占比）
+NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions.ts \
+  --input evaluation/upload/eval-dataset-full.csv \
+  --compare evaluation/upload/eval-dataset-6k.csv \
+  --out html/eval-question-classify.html
 
 # evaluation：抽取单模型 Q&A + 构建评测宽表（大文件需加大堆内存）
 tsx scripts/extract-qa-csv.ts
@@ -101,8 +112,7 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
 
 * 大文件统一走 Git LFS（见 `.gitattributes`）：`*.jsonl` / `*.csv` / `*.parquet` /
   `*.arrow` / `*.bin` / `*.h5` 均 LFS 跟踪，仓库内只存指针
-* 小样例例外：`evaluation/upload/eval-dataset-100.csv`、`eval-dataset.sample.csv`
-  以普通文件入库，便于无 LFS 环境查看
+* `csv/eval.csv`（完整评测集）、`csv/train.csv`（完整训练集，gitignored，本地重建）由 `scripts/build-consolidated-csv.ts` 生成
 * 已 gitignore：`third-dataset/`、`open-datasets/`、
-  `evaluation/third-dataset/qa-csv/`、`evaluation/upload/` 下的大体积成品、
+  `evaluation/third-dataset/qa-csv/`、`evaluation/upload/` 下第三方原数据的归一化全量导出、
   `*.html` 看板、`.agents/`、`.codebuddy/` 等（构建产物可由脚本重新生成）

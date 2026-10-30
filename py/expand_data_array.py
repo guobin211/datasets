@@ -10,6 +10,12 @@
 import csv
 import io
 import json
+from collections.abc import Callable
+from typing import Any
+
+# 平台运行时注入的全局函数；仅做类型声明，不赋值，避免覆盖注入的实现
+download_cos_file: Callable[[str], bytes]
+upload_cos_file: Callable[[dict[str, Any], bytes], None]
 
 
 def expand_data_rows(file_data) -> bytes:

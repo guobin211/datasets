@@ -4,7 +4,7 @@
  *
  * 输出：
  *   1. .agents/cache/categorized-stats.json   结构化统计结果（可复用）
- *   2. training/data/categorized-stats.html   自包含 ECharts 看板（浅色主题）
+ *   2. training/data/categorized-stats.html   自包含 ECharts 看板 —— **默认不生成**
  *
  * 用法：
  *   npx tsx scripts/stat-categorized.ts [--root training/data/categorized]
@@ -12,7 +12,9 @@
  * 设计要点：
  *   - 全量流式读取（createReadStream + readline），1.6G 数据不落内存
  *   - 只抽取统计所需字段，不构造中间对象数组
- *   - ECharts 本地 vendor 化，断网可看；同时带 CDN 回退
+ *   - 看板默认不单独产出：全仓库的统计看板统一由 scripts/stat-dashboard.ts
+ *     合并成一份 html/dataset-stats.html（训练数据 + 开源评测集两个 Tab），
+ *     这里再各出一份会造成看板重复。需要单独看板时用 --out <path> 显式指定。
  */
 
 import { createReadStream } from "node:fs";
@@ -273,7 +275,8 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       root: { type: "string", default: join(ROOT, "training", "data", "categorized") },
-      out: { type: "string", default: join(ROOT, "training", "data", "categorized-stats.html") },
+      // 留空 = 不生成 HTML 看板（看板统一走 stat-dashboard.ts）
+      out: { type: "string", default: "" },
       json: { type: "string", default: join(ROOT, ".agents", "cache", "categorized-stats.json") },
       echarts: { type: "string", default: join(ROOT, "evaluation", "open-dataset", "vendor", "echarts.min.js") },
       "top-source": { type: "string", default: "14" },
@@ -281,7 +284,7 @@ async function main(): Promise<void> {
   });
 
   const rootDir = resolve(values.root ?? ".");
-  const outHtml = resolve(values.out ?? ".");
+  const outHtml = values.out ? resolve(values.out) : "";
   const outJson = resolve(values.json ?? ".");
   const echartsSrc = resolve(values.echarts ?? ".");
   const topSource = Number(values["top-source"] ?? "14");
@@ -382,6 +385,12 @@ async function main(): Promise<void> {
   await mkdir(dirname(outJson), { recursive: true });
   await writeFile(outJson, JSON.stringify(stats, null, 2), "utf-8");
   console.log(`\n[ok] JSON  → ${outJson}`);
+
+  // 未显式指定 --out 就不产看板：全仓库看板统一由 stat-dashboard.ts 合并产出
+  if (!outHtml) {
+    console.log(`[skip] 未指定 --out，跳过单独看板；用 npx tsx scripts/stat-dashboard.ts 重建合并看板`);
+    return;
+  }
 
   // ECharts vendor 化：复制到产物同目录的 vendor/，HTML 优先引用本地
   const vendorDir = join(dirname(outHtml), "vendor");

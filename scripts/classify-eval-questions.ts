@@ -5,7 +5,7 @@
  * 输出：
  *   1. .agents/cache/eval-question-classify.json      结构化统计 + 各类样例
  *   2. evaluation/third-dataset/eval-question-classify.csv   逐题分类结果（可 join 回宽表）
- *   3. evaluation/third-dataset/eval-question-classify.html  自包含 ECharts 看板（浅色主题）
+ *   3. html/eval-question-classify.html  自包含 ECharts 看板（浅色主题）
  *
  * 用法：
  *   npx tsx scripts/classify-eval-questions.ts
@@ -183,11 +183,11 @@ async function main(): Promise<void> {
       },
       out: {
         type: "string",
-        default: join(ROOT, "evaluation", "third-dataset", "eval-question-classify.html"),
+        default: join(ROOT, "html", "eval-question-classify.html"),
       },
       echarts: {
         type: "string",
-        default: join(ROOT, "evaluation", "open-dataset", "vendor", "echarts.min.js"),
+        default: join(ROOT, "html", "vendor", "echarts.min.js"),
       },
       samples: { type: "string", default: "5" },
       "model-cols": { type: "string", default: "auto" },
@@ -429,7 +429,8 @@ async function main(): Promise<void> {
   let localEcharts = "vendor/echarts.min.js";
   try {
     await mkdir(vendorDir, { recursive: true });
-    await copyFile(echartsSrc, join(vendorDir, "echarts.min.js"));
+    const vendorDst = join(vendorDir, "echarts.min.js");
+    if (resolve(vendorDst) !== echartsSrc) await copyFile(echartsSrc, vendorDst);
   } catch (e) {
     console.warn(`[warn] ECharts 本地化失败，仅依赖 CDN：${String(e)}`);
     localEcharts = "https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js";

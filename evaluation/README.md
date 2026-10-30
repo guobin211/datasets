@@ -5,8 +5,8 @@
 ```
 evaluation/
 ├── upload/          统一 CSV 出口：所有成品评测集（自产宽表 + 开源题表）
-├── third-dataset/   自产中间产物：qa-csv/ 单模型 Q&A + eval-question-classify.* 问题分类
-└── open-dataset/    开源报告与看板：*.md 报告 + eval-category-stats.html + vendor/
+├── third-dataset/   自产中间产物：qa-csv/ 单模型 Q&A + eval-question-classify*.csv 问题分类
+└── open-dataset/    开源报告：*.md 报告 + 图片（HTML 看板统一在仓库根 html/）
 ```
 
 区分依据是**原始题目/答案从哪来**，而非文件格式。自产宽表（16 列模型答案）与开源
@@ -14,18 +14,22 @@ evaluation/
 
 ## upload/ — 成品评测集（统一出口）
 
+除 `eval-zh-en-full*` / `eval-mcq-zh-en` / `eval-open_qa-zh-en`（第三方原数据导出，gitignored）外，
+其余文件末尾均带 `cls_task_type / cls_domain / cls_difficulty` 三列规则分类，
+由 `scripts/build-consolidated-csv.ts` 追加；合并后的完整评测集见 `csv/eval.csv`。
+
 | 文件 | 来源 | 说明 |
 |---|---|---|
-| `eval-dataset-full.csv` | 自产 | 16 列模型宽表全量，156,583 行（687M，gitignored） |
-| `eval-dataset-50k.csv` | 自产 | 50,000 行（237M，gitignored） |
-| `eval-dataset-6k.csv` | 自产 | 6,000 行（11M，gitignored） |
-| `eval-dataset-100.csv` | 自产 | 100 行（272K，**入库**，非 LFS 小样例） |
-| `eval-dataset.sample.csv` | 自产 | 1 行（2.0K，**入库**，非 LFS 小样例） |
+| `eval-dataset-full.csv` | 自产 | 16 列模型宽表全量，156,583 行（687M，LFS 入库） |
+| `eval-dataset-50k.csv` | 自产 | 50,000 行（237M，LFS 入库） |
+| `eval-dataset-6k.csv` | 自产 | 6,000 行（11M，LFS 入库） |
+| `eval-dataset-100.csv` | 自产 | 100 行（272K，LFS 入库） |
+| `eval-dataset.sample.csv` | 自产 | 1 行（2.0K，LFS 入库） |
 | `eval-formal.csv` | 开源 | **正式评测集**，27,916 行 / 23 个基准、中英双语、全难度（LFS 入库） |
 | `eval-formal-legal-agent.csv` | 开源 | 专业服务评测集：legalbench 1,500 + LawBench 1,500 + apex-agents 480 + CUAD 300（2026-10 新增 4 源独立成集，列结构与 eval-formal 一致；CUAD 配额 300 因 context 均值 5.2 万字符；重建命令见 git log / COVERAGE 第六章） |
-| `eval-simple-1000.csv` | 开源 | 小学数学简单题 1,000 条（gitignored） |
-| `eval-mcq-zh-en.csv` / `eval-open_qa-zh-en.csv` | 开源 | 按 task_type 导出的选择题 / 开放问答 |
-| `eval-zh-en-full.csv` / `eval-zh-en-full-nolb.csv` | 开源 | 中英全量导出（含 / 不含 longbench） |
+| `eval-simple-1000.csv` | 开源 | 小学数学简单题 1,000 条（LFS 入库） |
+| `eval-mcq-zh-en.csv` / `eval-open_qa-zh-en.csv` | 开源 | 按 task_type 导出的选择题 / 开放问答（第三方原数据归一化导出，**gitignored**，可重建） |
+| `eval-zh-en-full.csv` / `eval-zh-en-full-nolb.csv` | 开源 | 中英全量导出（含 / 不含 longbench；第三方原数据归一化导出，**gitignored**，可重建） |
 
 ## third-dataset/ — 自产中间产物
 
@@ -41,7 +45,7 @@ third-dataset/<source>/*.jsonl
 | 路径 | 说明 |
 |---|---|
 | `qa-csv/` | 16 份单模型 Q&A，一份一个模型，列：`question, model1, answer1`（854M，gitignored） |
-| `eval-question-classify.html` | 评测问题三维分类看板（任务类型 / 学科领域 / 难度层级） |
+| `../../html/eval-question-classify.html` | 评测问题三维分类看板（任务类型 / 学科领域 / 难度层级） |
 | `eval-question-classify-{full,6k}.csv` | 逐题分类结果，可 join 回宽表 |
 
 自产宽表列结构：`question, context, answer_<model>...`，共 16 列（含 4 个暂无数据源的
@@ -62,19 +66,17 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
 NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions.ts \
   --input evaluation/upload/eval-dataset-full.csv \
   --compare evaluation/upload/eval-dataset-6k.csv \
-  --out evaluation/third-dataset/eval-question-classify.html
+  --out html/eval-question-classify.html
 ```
 
 ## open-dataset/ — 开源报告与看板
 
-存放开源数据侧的报告、可视化看板与离线依赖（`vendor/`），不落成品 CSV：
+存放开源数据侧的报告，不落成品 CSV；HTML 看板与 ECharts 离线依赖统一在仓库根 `html/`：
 
 | 路径 | 说明 |
 |---|---|
 | `COVERAGE-STATS.md` | 构建漏斗与覆盖度统计报告 |
 | `SPLIT-REPORT.md` | 语种拆分报告 |
-| `eval-category-stats.html` | 题目分类统计看板（ECharts） |
-| `vendor/echarts.min.js` | 看板离线依赖（gitignored） |
 
 ### eval-formal.csv — 正式评测集
 
@@ -192,10 +194,10 @@ ECharts 页面（12 张图，浅色主题）：
 ```bash
 python3 py/eval/stat_eval_categories.py
 # → .agents/cache/eval-category-stats.json   统计结果（可喂给其它消费方）
-# → evaluation/open-dataset/eval-category-stats.html   可视化看板
+# → html/eval-category-stats.html   可视化看板
 ```
 
-仅依赖标准库，无需 pandas；ECharts 已 vendor 到 `open-dataset/vendor/echarts.min.js`，
+仅依赖标准库，无需 pandas；ECharts 已 vendor 到 `html/vendor/echarts.min.js`，
 断网可看。`eval-formal.csv` 有 `category` / `task_type` / `subject` / `difficulty` /
 `variant` 五个显式分类字段，因此统计口径直接来自源数据，无需再推断；
 `eval-simple-*.csv` 无 category 字段，只有 `source` / `difficulty` / `reasoning_steps`

@@ -79,16 +79,34 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
   --out evaluation/upload/eval-dataset-6k.csv,evaluation/upload/eval-dataset-full.csv \
   --limit 6000,0
 
-# 5. 统计分类产物分布（4 个桶的条数/体积/角色/轮次/语种/源分布）
+# 5. 统计分类产物分布（4 个桶的条数/体积/角色/轮次/语种/源分布），只出 JSON
 npx tsx scripts/stat-categorized.ts
+
+# 5b. 重建合并统计看板（训练数据 + 开源评测集两个 Tab）→ html/dataset-stats.html
+npx tsx scripts/stat-dashboard.ts
 
 # 6. 给评测集的 question 列做三维分类（任务类型 / 学科领域 / 难度层级）
 #    全量 15.6 万条，需加大堆内存；--compare 会额外算一份子集占比用于偏斜对比
 NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions.ts \
   --input evaluation/upload/eval-dataset-full.csv \
   --compare evaluation/upload/eval-dataset-6k.csv \
-  --out evaluation/third-dataset/eval-question-classify.html
+  --out html/eval-question-classify.html
+
+# 7. 整理出完整评测集 csv/eval.csv 与完整训练集 csv/train.csv，
+#    并给 evaluation/upload 的评测集追加 cls_task_type / cls_domain / cls_difficulty 三列
+NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-consolidated-csv.ts [eval] [train]
 ```
+
+## 完整评测集 / 训练集（build-consolidated-csv.ts）
+
+- `csv/eval.csv`：自产宽表（156,583）+ eval-formal（27,916）+ legal-agent（3,780）+ simple-1000，
+  共 189,279 行 × 33 列；`origin` = self/open，开源行保留原 category/task_type/difficulty，
+  `cls_*` 三列是规则分类（口径同 question-classifier.ts）；自产行的 `answer_<model>` 列有值。
+- `csv/train.csv`（**gitignored**，本地重建）：`training/data/categorized` 的 3 个真实桶（question 桶是派生副本，不收录），
+  286,724 行；`messages` 列为 JSON 字符串，`id` = `<桶>/<来源>#<文件内序号>`
+  （源 `line` 在会话日志类来源里不唯一，不能当主键）。
+- 难度按名次在**全部去重问题**上统一切三档，所以各 upload 文件口径一致；
+  `build-eval-csv.ts` 重新生成宽表后需再跑一遍本脚本补分类列。脚本幂等。
 
 ## 评测问题分类（classify-eval-questions.ts）
 
@@ -102,7 +120,7 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions
 - **难度层级**：长度 + 题型基分 + 公式/数字/多问加权的启发式分数，**按名次切三档**（各 1/3）。
   早期版本按分数值切会出现 62%/5%/33% 的畸形分布——分数是离散的，必须按名次切。
 
-产物：`evaluation/third-dataset/eval-question-classify.html`（看板）、
+产物：`html/eval-question-classify.html`（看板）、
 `eval-question-classify-{full,6k}.csv`（逐题结果，可 join 回宽表）、
 `.agents/cache/eval-question-classify-*.json`（结构化统计）。
 
@@ -113,10 +131,11 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions
 ## 分类产物统计（stat-categorized.ts）
 
 全量流式扫描 `training/data/categorized/` 的 4 个分类桶（约 57 万条 / 1.6 GB，约 5 秒），
-产出两份文件：
+产出 `.agents/cache/categorized-stats.json` — 结构化统计结果，供下游脚本复用。
 
-- `.agents/cache/categorized-stats.json` — 结构化统计结果，供下游脚本复用
-- `training/data/categorized-stats.html` — 自包含 ECharts 看板（12 张图，浅色主题）
+**默认不再单独产出 HTML**：全仓库看板统一由 `scripts/stat-dashboard.ts` 合并成一份
+`html/dataset-stats.html`，各统计脚本再各出一份会造成看板重复。需要单独看板时显式传
+`--out <path>`（`py/eval/stat_eval_categories.py` 同理，传 `--html <path>`）。
 
 统计维度：桶条数 / 磁盘体积 / 文本量 / 消息数与角色构成 / 真实 user 轮次 /
 单条文本量分桶 / 语种（CJK 占比启发式）/ 数据源 × 桶矩阵 / 解析失败行。
@@ -130,6 +149,28 @@ NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions
   因此其条数 ≈ 其余三桶之和。算微调配比时以其余三桶为分母。
 
 `--root` / `--out` / `--json` / `--echarts` / `--top-source` 可覆盖默认路径与 Top N。
+
+## 合并统计看板（stat-dashboard.ts）
+
+仓库里**只保留一份统计看板** `html/dataset-stats.html`，用 Tab 把两块互不相干的
+统计并到一起。本脚本不做任何统计计算，只读上游 JSON + 绘图片段拼出 HTML，
+改统计口径请改上游脚本：
+
+| Tab | 上游脚本 | 数据源 JSON |
+|---|---|---|
+| 训练数据 | `scripts/stat-categorized.ts` | `.agents/cache/categorized-stats.json` |
+| 开源评测集 | `py/eval/stat_eval_categories.py` | `.agents/cache/eval-category-stats.json` |
+
+绘图片段放在 `scripts/stat-dashboard/{train,eval}.js`（纯 JS，不进 tsc 编译，
+因此可自由使用模板字符串），各自导出 `renderTrain(ctx)` / `renderEval(ctx)`，
+`ctx = { sub, kpis, grid, note, charts }`。新增一个 Tab = 加一个片段文件 +
+`PANELS` 里加一项，主脚本按约定拼装。
+
+**关键坑**：ECharts 在 `display:none` 容器里 `init` 会得到 0 尺寸，因此隐藏 Tab 的
+图表必须在切回来时 `resize()`，否则切过去是一片空白。
+
+用法：`npx tsx scripts/stat-dashboard.ts [--out html/dataset-stats.html]`
+（`--train` / `--eval` 可覆盖 JSON 输入路径）
 
 ## 评测集构建（build-eval-csv.ts）
 
@@ -171,10 +212,14 @@ answer_minimax_3
 
 ## 目录约定
 
+- `html/` — **所有生成的 HTML 看板统一落这里**（gitignored）：`dataset-stats.html`（唯一统计看板，
+  训练数据 + 开源评测集两个 Tab，由 `scripts/stat-dashboard.ts` 生成）、`eval-question-classify.html`
+  （评测问题三维分类）；`html/vendor/echarts.min.js` 为共用离线依赖。新增看板默认输出到此目录
 - `third-dataset/` — 原始数据（gitignored，按数据源分子目录）
 - `training/data/categorized/` — 分类处理产物（微调输入），按 `<category>/<source>.jsonl` 组织
 - `evaluation/upload/` — **统一 CSV 出口**，所有成品评测集（自产宽表 + 开源题表）都落这里；
   `evaluation/third-dataset/` 放 qa-csv 等自产中间产物，`evaluation/open-dataset/` 放开源报告与看板
+- `csv/` — 整理好的完整评测集 `eval.csv` 与完整训练集 `train.csv`（gitignored），以及小样例
 - `scripts/` — 可执行脚本（TS，自产数据流水线）
 - `py/` — Python 脚本（开源数据归一化 / 翻译 / 评测集构建，见 `py/README.md`）
 - `docs/` — 文档：`dataset-platform/`（本项目数据平台方案）+ `tech-reference/`（外部四仓库技术选型参考）

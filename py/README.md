@@ -30,7 +30,7 @@ py/
 │   ├── eval_coverage_stats.py    构建漏斗与覆盖度统计（复用 build_formal 逻辑）
 │   ├── stat_eval_categories.py   题目分类统计（category/task_type/lang/source/subject/difficulty/variant）
 │   │                             → .agents/cache/eval-category-stats.json
-│   │                             → evaluation/open-dataset/eval-category-stats.html（ECharts）
+│   │                             → html/eval-category-stats.html（ECharts）
 │   ├── review_eval_csv.py        已产出 CSV 的只读质检报告
 │   └── export_zh_en_by_tasktype.py  按 task_type 导出中英数据
 └── tools/              维护脚本
