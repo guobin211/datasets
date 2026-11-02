@@ -4,21 +4,29 @@ pub mod dataset_ops;
 pub mod evaluate;
 pub mod feedback;
 pub mod record;
+pub mod sampling;
 pub mod stats;
-pub mod train;
 pub mod transfer;
 
 use std::sync::Arc;
 
 use crate::config::Config;
+use crate::cos::CosRegistry;
 
-/// 业务门面。后续接入 `SqliteDatabase` / `CosRegistry` / `TaskEngine`。
-pub struct DeepopsService {
+/// 业务门面：持有配置与对象存储注册表。
+///
+/// 这里不存在任何远程平台客户端——评测直接用本机 API Key 调模型，
+/// 数据只在本地文件与配置好的对象存储桶之间流动。
+pub struct DatasetsService {
     pub config: Arc<Config>,
+    pub cos: Arc<CosRegistry>,
 }
 
-impl DeepopsService {
+impl DatasetsService {
     pub fn new(config: Arc<Config>) -> Self {
-        Self { config }
+        Self {
+            config,
+            cos: Arc::new(CosRegistry::new()),
+        }
     }
 }

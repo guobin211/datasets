@@ -1,6 +1,6 @@
 //! SQLite 存储：连接管理（PRAGMA + 前向迁移）+ 仓储接口。
 //!
-//! 工程约束（docs/deepops-cli.md §5）：
+//! 工程约束（docs/datasets-cli.md §4）：
 //! - PRAGMA：WAL / synchronous=NORMAL / foreign_keys=ON / busy_timeout=5000
 //! - 并发：单写多读（tokio-rusqlite 单连接串行化），长事务分批提交
 //! - 迁移：只做前向兼容增量迁移
@@ -13,7 +13,7 @@ use tokio_rusqlite::Connection;
 use crate::database::models::{
     ArtifactRecord, DatasetRecord, EvalRunRecord, TaskPatch, TaskQuery, TaskRecord,
 };
-use crate::error::{DeepopsError, Result};
+use crate::error::{DatasetsError, Result};
 
 /// 前向迁移 DDL（版本 = 下标 + 1）。只增不改，已应用版本记录在 schema_migrations。
 const MIGRATIONS: &[&str] = &[
@@ -38,13 +38,14 @@ const MIGRATIONS: &[&str] = &[
         size_bytes INTEGER NOT NULL,
         created_at INTEGER NOT NULL
     );",
-    // V1: eval_runs
+    // V1: eval_runs（本地评测运行实例；没有 backend 列，评测只有本地一种执行方式）
     "CREATE TABLE IF NOT EXISTS eval_runs (
         id TEXT PRIMARY KEY,
-        dataset_id TEXT NOT NULL,
+        input TEXT NOT NULL,
         models TEXT NOT NULL,
-        backend TEXT NOT NULL,
         out_path TEXT NOT NULL,
+        rows INTEGER NOT NULL DEFAULT 0,
+        failures INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL,
         created_at INTEGER NOT NULL
     );",
@@ -59,7 +60,7 @@ const MIGRATIONS: &[&str] = &[
     );",
 ];
 
-/// 仓储接口（示意，docs/deepops-cli.md §5）。CRUD 实现落在实现步骤 4。
+/// 仓储接口（示意，docs/datasets-cli.md §4）。CRUD 实现落在实现步骤 7。
 #[async_trait]
 pub trait SqliteStore: Send + Sync {
     async fn create_task(&self, task: TaskRecord) -> Result<()>;
@@ -83,7 +84,7 @@ impl SqliteDatabase {
         }
         let conn = Connection::open(path)
             .await
-            .map_err(|e| DeepopsError::Task(e.to_string()))?;
+            .map_err(|e| DatasetsError::Task(e.to_string()))?;
         let db = Self { conn };
         db.init_pragmas().await?;
         db.migrate().await?;
@@ -93,15 +94,16 @@ impl SqliteDatabase {
     async fn init_pragmas(&self) -> Result<()> {
         self.conn
             .call(|conn| -> tokio_rusqlite::Result<()> {
-                // journal_mode / synchronous 会返回结果行，须用 query_row
+                // journal_mode 设置时会返回一行新模式值，必须用 query_row 读掉；
+                // synchronous 等其余 PRAGMA 不返回行，用 query_row 会得到 QueryReturnedNoRows
                 conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
-                conn.query_row("PRAGMA synchronous = NORMAL", [], |_| Ok(()))?;
+                conn.pragma_update(None, "synchronous", "NORMAL")?;
                 conn.pragma_update(None, "foreign_keys", "ON")?;
                 conn.busy_timeout(std::time::Duration::from_millis(5_000))?;
                 Ok(())
             })
             .await
-            .map_err(|e| DeepopsError::Task(e.to_string()))?;
+            .map_err(|e| DatasetsError::Task(e.to_string()))?;
         Ok(())
     }
 
@@ -135,7 +137,7 @@ impl SqliteDatabase {
                 Ok(())
             })
             .await
-            .map_err(|e| DeepopsError::Task(e.to_string()))?;
+            .map_err(|e| DatasetsError::Task(e.to_string()))?;
         Ok(())
     }
 }
@@ -143,26 +145,44 @@ impl SqliteDatabase {
 #[async_trait]
 impl SqliteStore for SqliteDatabase {
     async fn create_task(&self, _task: TaskRecord) -> Result<()> {
-        Err(DeepopsError::NotImplemented("SqliteStore::create_task"))
+        Err(DatasetsError::NotImplemented("SqliteStore::create_task"))
     }
 
     async fn update_task(&self, _id: &str, _patch: TaskPatch) -> Result<()> {
-        Err(DeepopsError::NotImplemented("SqliteStore::update_task"))
+        Err(DatasetsError::NotImplemented("SqliteStore::update_task"))
     }
 
     async fn list_tasks(&self, _q: TaskQuery) -> Result<Vec<TaskRecord>> {
-        Err(DeepopsError::NotImplemented("SqliteStore::list_tasks"))
+        Err(DatasetsError::NotImplemented("SqliteStore::list_tasks"))
     }
 
     async fn upsert_dataset(&self, _ds: DatasetRecord) -> Result<()> {
-        Err(DeepopsError::NotImplemented("SqliteStore::upsert_dataset"))
+        Err(DatasetsError::NotImplemented("SqliteStore::upsert_dataset"))
     }
 
     async fn create_eval_run(&self, _run: EvalRunRecord) -> Result<()> {
-        Err(DeepopsError::NotImplemented("SqliteStore::create_eval_run"))
+        Err(DatasetsError::NotImplemented(
+            "SqliteStore::create_eval_run",
+        ))
     }
 
     async fn append_artifact(&self, _a: ArtifactRecord) -> Result<()> {
-        Err(DeepopsError::NotImplemented("SqliteStore::append_artifact"))
+        Err(DatasetsError::NotImplemented(
+            "SqliteStore::append_artifact",
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SqliteDatabase;
+
+    #[tokio::test]
+    async fn open_applies_migrations_idempotently() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("nested").join("metadata.db");
+        // 两次打开都应成功：迁移必须幂等
+        SqliteDatabase::open(&path).await.expect("first open");
+        SqliteDatabase::open(&path).await.expect("second open");
     }
 }

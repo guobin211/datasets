@@ -1,8 +1,8 @@
 //! CLI 入口：解析参数 → 加载配置 → 分发到 `commands::run`。
 
 use clap::Parser;
-use deepops::cli::Cli;
-use deepops::commands;
+use datasets::cli::Cli;
+use datasets::commands;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {

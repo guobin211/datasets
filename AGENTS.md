@@ -197,18 +197,52 @@ answer_minimax_3
 
 - **TypeScript**（自产数据流水线）：Node.js ESM，`tsx` 直接执行，`parseArgs` 解析 CLI，`createReadStream` + `readline` 流式处理大文件（避免加载到内存）
 - **Python**（开源数据流水线，`py/`）：`uv` 管理依赖，`ruff` 格式化与检查，`pyarrow` 读 parquet
+- **Rust**（本地评测 CLI，`src/`）：`datasets` 单包 lib + bin，`clap` 命令面、`opendal` 对象存储、`rig-core` 模型调用、`tokio-rusqlite` 元数据
 - **包管理**：pnpm（workspace 配置见 `pnpm-workspace.yaml`）
 - **tsconfig 关键项**：`strict: true`、`noUncheckedIndexedAccess: true`、`verbatimModuleSyntax: true`、`module: nodenext`
+
+## 本地评测 CLI（`datasets`，Rust）
+
+纯本地程序，**不对接任何远程数据/训练平台**。完整技术方案见 `docs/datasets-cli.md`。
+
+```bash
+cargo build && cargo test            # 工具链版本见 rust-toolchain.toml
+datasets config init                 # 写出 ~/.config/datasets/prod/v1/config.toml
+datasets model list                  # 检查本机 API Key 是否就绪（脱敏）
+
+# 数据集 = 本地文件 或 cos://<存储名>/<对象键>，两者在所有命令里可互换
+datasets dataset inspect third-dataset/raw/merge.jsonl          # 先看列名与问题列候选
+datasets dataset prepare third-dataset/raw/merge.jsonl \        # 挑选 + 格式化 + 抽样
+    --where "lang = 'zh'" --sample 1000 --sample-by category --seed 42 --dedupe \
+    --keep lang,category --out out/eval-1k.jsonl
+datasets dataset upload out/eval-1k.jsonl --cos cos://my-bucket/eval/eval-1k.jsonl
+
+# 跑评测 = 用本机配置的 API Key 直连模型，结果落宽表
+datasets eval run --input out/eval-1k.jsonl --models opus-4-8,gpt-5-5 --out out/wide.csv
+datasets eval collect out/wide.csv
+datasets eval feedback out/wide.csv --where "error_opus_4_8 = ''" --out out/next.jsonl
+```
+
+要点：
+- `dataset prepare` 把源问题列（`prompt` / `instruction` / ... 自动探测）映射为**规范列 `question`**，
+  因此其产物给 `eval run` 时不必再传 `--question-field`；默认只输出规范列 + `--keep`，源列不全带
+- `--sample` 支持条数（`1000`）与比例（`10%`）；`--sample-by <列>` 做分层抽样（比例分配 + 最大余数法），
+  同 `--seed` 可复现，输出保持原始行序
+- 宽表列名与 TS 侧 `toFieldSlug()` 同口径：`opus-4.6` → `answer_opus_4_6`
+- 凭据只在配置里写 env 变量名（`api_key_env` / `secret_*_env`），不存明文
+- 单个 (行 × 模型) 请求失败只写 `error_<slug>` 列，不中断整轮评测
+- 未实现的子命令返回 `DATASETS_E9998_NOT_IMPLEMENTED`，不会静默成功（进度见 `docs/datasets-cli.md` §11）
 
 ## 代码规范要点
 
 - **数据字段名一律用下划线连接**，禁止中横线（也不留点号）。模型名等标识写进字段名前
-  先过 `toFieldSlug()`（`scripts/utils.ts`）：`opus-4.6` → `answer_opus_4_6`
+  先过 `toFieldSlug()`（`scripts/utils.ts`）/ `to_field_slug()`（`src/service/record.rs`）：`opus-4.6` → `answer_opus_4_6`
 - 流式处理 JSONL：统一用 `createReadStream` + `createInterface`，不要一次性 `readFile`
 - 写入大文件用 `createWriteStream` 并处理背压（`drain` 事件）
 - TS 脚本入口用顶层 `await main()` 而非 `.then()`
 - 输出路径统一用 `resolve()` / `join()`，跨平台安全
 - `cate-other-jsonl.ts` 允许使用 `any` 处理动态 JSON 数据；`cate-jsonl.ts` 保持强类型
+- Rust 侧：业务能力一律落在 `src/service/`，CLI / MCP / HTTP 只做"参数 → service → 渲染"；生产逻辑禁止 `.unwrap()`
 
 ## 目录约定
 
@@ -222,9 +256,11 @@ answer_minimax_3
 - `csv/` — 整理好的完整评测集 `eval.csv` 与完整训练集 `train.csv`（gitignored），以及小样例
 - `scripts/` — 可执行脚本（TS，自产数据流水线）
 - `py/` — Python 脚本（开源数据归一化 / 翻译 / 评测集构建，见 `py/README.md`）
-- `docs/` — 文档：`dataset-platform/`（本项目数据平台方案）+ `tech-reference/`（外部四仓库技术选型参考）
+- `src/` — Rust 本地评测 CLI `datasets`（见 `docs/datasets-cli.md`）
+- `docs/` — 文档：`datasets-cli.md`（本地评测 CLI 技术方案）+ `dataset-platform/`（本项目数据平台方案）+ `tech-reference/`（外部四仓库技术选型参考）
 - `.agents/cache/` — 临时脚本与中间产物（gitignored）
 
 **脚本放置规则**：
 - Python 脚本统一放在 `py/` 目录。
 - TypeScript 脚本统一放在 `scripts/` 目录。
+- Rust 代码统一放在 `src/` 目录（单包 lib + bin，不另建 workspace 成员）。

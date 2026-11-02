@@ -1,25 +1,24 @@
 [package]
-name = "deepops"
+name = "datasets"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.91"
 authors = ["michaelbguo"]
 license = "UNLICENSED"
-description = "DeepOps 对话数据集处理 CLI + lib：取数 / 变换 / 传输 / 评测 / 回流 / 看板"
-# lib 随项目一起发布；发布渠道（crates.io / 内部 registry）待定，见 docs/deepops-cli.md §12-10
+description = "datasets 本地评测 CLI + lib：数据集变换 / 本地与 COS 传输 / 本机 API Key 模型评测 / 结果回流 / 看板"
+# lib 随项目一起发布；发布渠道（crates.io / 内部 registry）待定，见 docs/datasets-cli.md §11
 publish = false
 
 [lib]
-name = "deepops"
+name = "datasets"
 path = "src/lib.rs"
 
 [[bin]]
-name = "deepops"
+name = "datasets"
 path = "src/main.rs"
 
 [dependencies]
 # 序列化 / 错误
-anyhow = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
@@ -28,16 +27,14 @@ csv = "1"
 
 # 异步运行时
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync", "time", "signal", "process", "fs"] }
-tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
 async-trait = "0.1"
-bytes = "1"
 
 # 对象存储（多平台桶：cos / s3 / fs；oss / obs 按需加 feature）
 opendal = { version = "0.59", features = ["services-cos", "services-s3", "services-fs"] }
 
-# 模型调用（openai / anthropic / deepseek 统一 completion + 流式 + tool calling）
-rig-core = "0.44"
+# 模型调用（openai / anthropic / deepseek 统一 completion；reqwest feature 提供 HTTP 传输）
+rig-core = { version = "0.44", features = ["reqwest"] }
 
 # CLI / 配置
 clap = { version = "4", features = ["derive"] }
@@ -45,18 +42,14 @@ dirs = "6"
 humantime = "2"
 indicatif = "0.17"
 
-# HTTP + MCP
-reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "http2", "rustls-tls"] }
+# 本地 HTTP + MCP 服务（对外只暴露 127.0.0.1 端点，不访问任何外部平台）
 axum = "0.8"
-# rmcp 3.x；骨架阶段只开 server，stdio / streamable-http transport 在实现步骤 11 按需开 feature
+# rmcp 3.x；骨架阶段只开 server，stdio / streamable-http transport 按需开 feature
 rmcp = { version = "3", features = ["server"] }
-url = "2"
 
 # 并发 / 数据结构
 dashmap = "6"
 parking_lot = "0.12"
-arc-swap = "1"
-once_cell = "1"
 
 # 跨平台系统工具
 interprocess = { version = "2", features = ["tokio"] }
@@ -69,8 +62,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # 工具
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
-walkdir = "2"
-globset = "0.4"
 regex = "1"
 
 # SQLite（0.7 携 bundled SQLite 并 re-export rusqlite；不再单独依赖 rusqlite）

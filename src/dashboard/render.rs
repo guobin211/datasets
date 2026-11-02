@@ -5,9 +5,10 @@ use crate::error::Result;
 
 pub fn render_table(stats: &Stats) -> String {
     format!(
-        "datasets downloaded : {}\ndownloaded bytes    : {}\ntasks running       : {}\ntasks done          : {}\ntasks failed        : {}",
+        "datasets downloaded : {}\ndownloaded bytes    : {}\neval runs           : {}\ntasks running       : {}\ntasks done          : {}\ntasks failed        : {}",
         stats.datasets_downloaded,
         stats.downloaded_bytes,
+        stats.eval_runs,
         stats.tasks_running,
         stats.tasks_done,
         stats.tasks_failed,

@@ -1,13 +1,15 @@
-//! 对象存储注册表：多平台桶配置 → OpenDAL Operator。
+//! 对象存储：多平台桶配置 → OpenDAL `Operator`，并解析 `cos://` 地址。
 //!
-//! TODO(实现步骤 7)：按 `[[cos]]` 配置构建各平台 Operator
-//! （腾讯 COS / AWS S3 / 本地 fs），叠加 RetryLayer / 并发限流 / 多段上传。
+//! 凭据只存 env 变量名（`secret_id_env` / `secret_key_env`），运行期由
+//! [`crate::auth`] 解析，日志一律脱敏。Operator 按存储名缓存，重复使用不重建。
 
 use dashmap::DashMap;
-use opendal::Operator;
+use opendal::layers::RetryLayer;
+use opendal::{Operator, services};
 
-use crate::config::CosConfig;
-use crate::error::{DeepopsError, Result};
+use crate::auth;
+use crate::config::{Config, CosConfig, StoragePlatform};
+use crate::error::{DatasetsError, Result};
 
 /// 已构建的 Operator 注册表（按配置名索引）。
 #[derive(Default)]
@@ -27,11 +29,73 @@ impl CosRegistry {
     pub fn get(&self, name: &str) -> Option<Operator> {
         self.operators.get(name).map(|op| op.clone())
     }
+
+    /// 取（或按配置懒构建）指定存储名的 Operator。
+    pub async fn operator(&self, name: &str, cfg: &Config) -> Result<Operator> {
+        if let Some(op) = self.get(name) {
+            return Ok(op);
+        }
+        let store = cfg.cos_or_err(name)?;
+        let op = build_operator(store)?;
+        self.register(name, op.clone());
+        Ok(op)
+    }
 }
 
-/// 依据配置构建 Operator（cos / s3 / oss / obs / fs）。
-pub fn build_operator(_cfg: &CosConfig) -> Result<Operator> {
-    Err(DeepopsError::NotImplemented("cos::build_operator"))
+/// 依据配置构建 Operator（cos / s3 / fs）。
+///
+/// `oss` / `obs` 需先在 `Cargo.toml` 启用对应 opendal service feature，当前未启用。
+pub fn build_operator(cfg: &CosConfig) -> Result<Operator> {
+    let op = match cfg.platform {
+        StoragePlatform::Cos => {
+            let mut builder = services::Cos::default()
+                .bucket(require(&cfg.bucket, &cfg.name, "bucket")?)
+                .endpoint(require(&cfg.endpoint, &cfg.name, "endpoint")?);
+            if let Some(id) = auth::resolve_opt(cfg.secret_id_env.as_deref())? {
+                builder = builder.secret_id(&id);
+            }
+            if let Some(key) = auth::resolve_opt(cfg.secret_key_env.as_deref())? {
+                builder = builder.secret_key(&key);
+            }
+            Operator::new(builder)?
+        }
+        StoragePlatform::S3 => {
+            let mut builder =
+                services::S3::default().bucket(require(&cfg.bucket, &cfg.name, "bucket")?);
+            if let Some(region) = &cfg.region {
+                builder = builder.region(region);
+            }
+            if let Some(endpoint) = &cfg.endpoint {
+                builder = builder.endpoint(endpoint);
+            }
+            if let Some(id) = auth::resolve_opt(cfg.secret_id_env.as_deref())? {
+                builder = builder.access_key_id(&id);
+            }
+            if let Some(key) = auth::resolve_opt(cfg.secret_key_env.as_deref())? {
+                builder = builder.secret_access_key(&key);
+            }
+            Operator::new(builder)?
+        }
+        StoragePlatform::Fs => {
+            // 本地目录模拟对象存储，便于离线自测；root 复用 bucket 字段
+            let root = cfg.bucket.as_deref().unwrap_or(".");
+            Operator::new(services::Fs::default().root(root))?
+        }
+        StoragePlatform::Oss | StoragePlatform::Obs => {
+            return Err(DatasetsError::Config(format!(
+                "cos store `{}` uses platform `{:?}`, whose opendal service feature is not enabled",
+                cfg.name, cfg.platform
+            )));
+        }
+    };
+    Ok(op.layer(RetryLayer::new()))
+}
+
+fn require<'a>(value: &'a Option<String>, store: &str, field: &str) -> Result<&'a str> {
+    value
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| DatasetsError::Config(format!("cos store `{store}` is missing `{field}`")))
 }
 
 /// 对象存储地址：`cos://<存储名>/<对象键>`。
@@ -64,9 +128,16 @@ impl std::str::FromStr for CosUri {
     }
 }
 
+impl std::fmt::Display for CosUri {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "cos://{}/{}", self.name, self.key)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::CosUri;
+    use super::{CosUri, build_operator};
+    use crate::config::{CosConfig, StoragePlatform};
 
     #[test]
     fn parses_named_and_default_store() {
@@ -84,5 +155,39 @@ mod tests {
         for bad in ["data/test.jsonl", "cos://only-name", "cos://name/"] {
             assert!(bad.parse::<CosUri>().is_err(), "{bad} should be rejected");
         }
+    }
+
+    #[test]
+    fn fs_platform_builds_without_credentials() {
+        let cfg = CosConfig {
+            name: "local".into(),
+            platform: StoragePlatform::Fs,
+            bucket: Some(".".into()),
+            ..CosConfig::default()
+        };
+        assert!(build_operator(&cfg).is_ok());
+    }
+
+    #[test]
+    fn cos_platform_requires_bucket_and_endpoint() {
+        let cfg = CosConfig {
+            name: "remote".into(),
+            platform: StoragePlatform::Cos,
+            ..CosConfig::default()
+        };
+        let err = build_operator(&cfg).unwrap_err();
+        assert_eq!(err.code(), "DATASETS_E0001_CONFIG");
+    }
+
+    #[test]
+    fn unsupported_platforms_report_missing_feature() {
+        let cfg = CosConfig {
+            name: "oss-store".into(),
+            platform: StoragePlatform::Oss,
+            bucket: Some("b".into()),
+            endpoint: Some("https://example.com".into()),
+            ..CosConfig::default()
+        };
+        assert!(build_operator(&cfg).is_err());
     }
 }

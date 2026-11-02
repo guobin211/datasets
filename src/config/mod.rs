@@ -1,12 +1,12 @@
-//! 配置层：分层加载 + 多 cos / 多 model + env 凭据引用。
+//! 配置层：分层加载 + 多 cos 桶 + 多 model + env 凭据引用。
 //!
-//! 优先级：`--config <path>` > `~/.config/deepops/<mode>/<version>/config.toml` > 内置默认。
+//! 优先级：`--config <path>` > `~/.config/datasets/<mode>/<version>/config.toml` > 内置默认。
 //! 注意：`mode` / `version` 决定配置文件**所在目录**，配置文件内的 `app.mode` 仅作记录。
 
 pub mod cos;
 pub mod daemon;
 pub mod dashboard;
-pub mod deepops;
+pub mod eval;
 pub mod model;
 pub mod tasks;
 
@@ -17,32 +17,39 @@ use serde::{Deserialize, Serialize};
 pub use cos::{CosConfig, StoragePlatform};
 pub use daemon::DaemonConfig;
 pub use dashboard::DashboardConfig;
-pub use deepops::DeepopsConfig;
+pub use eval::EvalConfig;
 pub use model::{ModelConfig, ModelProvider};
 pub use tasks::TasksConfig;
 
-use crate::error::{DeepopsError, Result};
+use crate::error::{DatasetsError, Result};
 
 pub const DEFAULT_VERSION: &str = "v1";
 
-/// `deepops config init` 写出的默认配置模板（docs/deepops-cli.md §4）。
+/// `datasets config init` 写出的默认配置模板（docs/datasets-cli.md §3）。
 pub const DEFAULT_CONFIG_TOML: &str = r#"[app]
 mode = "prod"
 version = "v1"
 
 [tasks]
 max_concurrency = 8
-# state_dir = "~/.config/deepops/prod/v1/tasks"
+# state_dir = "~/.config/datasets/prod/v1/tasks"
 
 [database]
-# sqlite_path = "~/.config/deepops/prod/v1/metadata.db"
+# sqlite_path = "~/.config/datasets/prod/v1/metadata.db"
 
 [daemon]
 enabled = false
-socket_name = "deepops"
+socket_name = "datasets"
 
 [dashboard]
 http = "127.0.0.1:7070"
+
+[eval]
+question_field = "question"
+concurrency = 4
+record = "answer,reasoning,tool_calls,usage"
+max_retries = 2
+max_tokens = 4096
 
 [[cos]]
 name = "default"
@@ -73,13 +80,9 @@ provider = "deepseek"
 base_url = "https://api.deepseek.com"
 model_id = "deepseek-chat"
 api_key_env = "DEEPSEEK_API_KEY"
-
-[deepops]
-base_url = "https://<deepops-eval-site>/api"
-token_env = "DEEPOPS_TOKEN"
 "#;
 
-/// 运行模式（决定配置/数据库目录：`~/.config/deepops/<mode>/<version>/`）。
+/// 运行模式（决定配置/数据库目录：`~/.config/datasets/<mode>/<version>/`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -129,9 +132,9 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub daemon: DaemonConfig,
     pub dashboard: DashboardConfig,
+    pub eval: EvalConfig,
     pub cos: Vec<CosConfig>,
     pub model: Vec<ModelConfig>,
-    pub deepops: DeepopsConfig,
 }
 
 /// 配置加载选项（来自 CLI 全局参数）。
@@ -171,14 +174,13 @@ pub fn load(opts: &LoadOptions) -> Result<Config> {
     Ok(cfg)
 }
 
-/// `~/.config/deepops/<mode>/<version>/`
-/// TODO(待确认 §12-9)：是否改走 `dirs::config_dir()`（Windows/macOS 语义差异）。
+/// `~/.config/datasets/<mode>/<version>/`
 pub fn root_dir(mode: Mode, version: &str) -> Result<PathBuf> {
     let home =
-        dirs::home_dir().ok_or_else(|| DeepopsError::Config("cannot resolve home dir".into()))?;
+        dirs::home_dir().ok_or_else(|| DatasetsError::Config("cannot resolve home dir".into()))?;
     Ok(home
         .join(".config")
-        .join("deepops")
+        .join("datasets")
         .join(mode.as_str())
         .join(version))
 }
@@ -191,7 +193,7 @@ pub fn default_config_path(mode: Mode, version: &str) -> Result<PathBuf> {
 pub fn expand_path(p: &str) -> Result<PathBuf> {
     if let Some(rest) = p.strip_prefix("~/") {
         let home = dirs::home_dir()
-            .ok_or_else(|| DeepopsError::Config("cannot resolve home dir".into()))?;
+            .ok_or_else(|| DatasetsError::Config("cannot resolve home dir".into()))?;
         Ok(home.join(rest))
     } else {
         Ok(PathBuf::from(p))
@@ -225,9 +227,31 @@ impl Config {
         self.model.iter().find(|m| m.name == name)
     }
 
+    /// 按名查找模型配置，未配置时给出可用列表。
+    pub fn model_or_err(&self, name: &str) -> Result<&ModelConfig> {
+        self.model(name).ok_or_else(|| {
+            let known: Vec<&str> = self.model.iter().map(|m| m.name.as_str()).collect();
+            DatasetsError::Config(format!(
+                "unknown model `{name}`; configured models: [{}] (run `datasets model list`)",
+                known.join(", ")
+            ))
+        })
+    }
+
     /// 按名查找对象存储配置（缺省名为 default）。
     pub fn cos_or_default(&self, name: Option<&str>) -> Option<&CosConfig> {
         let name = name.unwrap_or("default");
         self.cos.iter().find(|c| c.name == name)
+    }
+
+    /// 按名查找对象存储配置，未配置时给出可用列表。
+    pub fn cos_or_err(&self, name: &str) -> Result<&CosConfig> {
+        self.cos.iter().find(|c| c.name == name).ok_or_else(|| {
+            let known: Vec<&str> = self.cos.iter().map(|c| c.name.as_str()).collect();
+            DatasetsError::Config(format!(
+                "unknown cos store `{name}`; configured stores: [{}]",
+                known.join(", ")
+            ))
+        })
     }
 }

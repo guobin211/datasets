@@ -1,17 +1,17 @@
 //! 后台守护进程：长任务托管（socket + dispatch + 单实例锁）。
 //!
-//! TODO(实现步骤 10)：interprocess socket、任务恢复、fd-lock 单实例。
+//! TODO(实现步骤 9)：interprocess socket、任务恢复、fd-lock 单实例。
 
-use crate::error::{DeepopsError, Result};
+use crate::error::{DatasetsError, Result};
 
 pub async fn start(_socket_name: Option<String>) -> Result<()> {
-    Err(DeepopsError::NotImplemented("daemon::start"))
+    Err(DatasetsError::NotImplemented("daemon::start"))
 }
 
 pub async fn stop(_graceful_timeout: Option<u64>) -> Result<()> {
-    Err(DeepopsError::NotImplemented("daemon::stop"))
+    Err(DatasetsError::NotImplemented("daemon::stop"))
 }
 
 pub async fn status() -> Result<()> {
-    Err(DeepopsError::NotImplemented("daemon::status"))
+    Err(DatasetsError::NotImplemented("daemon::status"))
 }

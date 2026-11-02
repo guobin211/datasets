@@ -13,7 +13,7 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            socket_name: "deepops".into(),
+            socket_name: "datasets".into(),
         }
     }
 }

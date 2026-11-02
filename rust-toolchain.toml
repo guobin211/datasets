@@ -1,4 +1,4 @@
-# deepops 构建工具链 —— 构建版本的单一事实来源（对齐 codebrains 约定，文档不写具体数字）
+# datasets 构建工具链 —— 构建版本的单一事实来源（对齐 codebrains 约定，文档不写具体数字）
 #
 # 与 Cargo.toml 的关系：
 # - 本文件 channel          = 日常开发/发布用的构建版本

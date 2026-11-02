@@ -1,10 +1,10 @@
-//! `deepops config` 子命令：show / path / init / set / unset（docs/deepops-cli.md §8.1）。
+//! `datasets config` 子命令：show / path / init / set / unset（docs/datasets-cli.md §6.5）。
 //!
-//! set / unset 需 TOML 定位编辑（原子写回），落在实现步骤 2 后续。
+//! set / unset 需 TOML 定位编辑（原子写回），落在实现步骤 11。
 
 use crate::cli::ConfigCommand;
 use crate::config::{self, Config};
-use crate::error::{DeepopsError, Result};
+use crate::error::{DatasetsError, Result};
 
 pub async fn run(cmd: ConfigCommand, cfg: &Config, json: bool) -> Result<()> {
     match cmd {
@@ -14,7 +14,7 @@ pub async fn run(cmd: ConfigCommand, cfg: &Config, json: bool) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(cfg)?);
             } else {
                 let toml_str = toml::to_string(cfg)
-                    .map_err(|e| DeepopsError::Config(format!("serialize config: {e}")))?;
+                    .map_err(|e| DatasetsError::Config(format!("serialize config: {e}")))?;
                 print!("{toml_str}");
             }
             Ok(())
@@ -29,7 +29,7 @@ pub async fn run(cmd: ConfigCommand, cfg: &Config, json: bool) -> Result<()> {
         ConfigCommand::Init { force } => {
             let path = config::default_config_path(cfg.app.mode, &cfg.app.version)?;
             if path.exists() && !force {
-                return Err(DeepopsError::Config(format!(
+                return Err(DatasetsError::Config(format!(
                     "config already exists: {} (use --force to overwrite)",
                     path.display()
                 )));
@@ -42,7 +42,7 @@ pub async fn run(cmd: ConfigCommand, cfg: &Config, json: bool) -> Result<()> {
             Ok(())
         }
 
-        ConfigCommand::Set { .. } => Err(DeepopsError::NotImplemented("config set")),
-        ConfigCommand::Unset { .. } => Err(DeepopsError::NotImplemented("config unset")),
+        ConfigCommand::Set { .. } => Err(DatasetsError::NotImplemented("config set")),
+        ConfigCommand::Unset { .. } => Err(DatasetsError::NotImplemented("config unset")),
     }
 }

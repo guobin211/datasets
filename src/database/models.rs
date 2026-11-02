@@ -17,7 +17,7 @@ pub enum TaskStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRecord {
     pub id: String,
-    /// 任务种类：upload / download / eval / train / ...
+    /// 任务种类：upload / download / eval / prepare / ...
     pub kind: String,
     pub status: TaskStatus,
     #[serde(default)]
@@ -55,22 +55,23 @@ pub struct DatasetRecord {
     pub name: String,
     /// 来源：本地路径或 cos://name/key
     pub source: String,
-    /// jsonl / csv / parquet
+    /// jsonl / csv
     pub format: String,
     pub size_bytes: u64,
     pub created_at: i64,
 }
 
-/// eval_runs 表记录（评测运行实例）。
+/// eval_runs 表记录（一次本地评测运行实例）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalRunRecord {
     pub id: String,
-    pub dataset_id: String,
-    /// 参与评测的模型名列表
+    /// 评测输入：本地路径或 cos://name/key
+    pub input: String,
+    /// 参与评测的模型别名列表
     pub models: Vec<String>,
-    /// local / deepops
-    pub backend: String,
     pub out_path: String,
+    pub rows: u64,
+    pub failures: u64,
     pub status: TaskStatus,
     pub created_at: i64,
 }
