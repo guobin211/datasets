@@ -1,0 +1,10 @@
+# deepops 构建工具链 —— 构建版本的单一事实来源（对齐 codebrains 约定，文档不写具体数字）
+#
+# 与 Cargo.toml 的关系：
+# - 本文件 channel          = 日常开发/发布用的构建版本
+# - Cargo.toml rust-version = MSRV（能编译的最低版本，由 opendal 0.59 决定 = 1.91）
+# - 约束 channel >= rust-version
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
