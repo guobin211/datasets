@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { access, mkdir, writeFile, appendFile } from 'node:fs/promises';
+import { access, mkdir, writeFile, appendFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
@@ -197,4 +197,51 @@ export function filterForQuestion(msgs: Message[]): Message[] {
  */
 export function toFieldSlug(name: string): string {
   return name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+/** 将 JSONL 数据集转换为 CSV（字段按并集顺序展开）；适合泛化导出与调试对照。 */
+export async function exportJsonlToCsv(
+  inputPath: string,
+  outputPath: string,
+): Promise<void> {
+  const content = await readFile(inputPath, 'utf8');
+  const rows = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })
+    .filter((row): row is Record<string, unknown> => row !== null);
+
+  if (rows.length === 0) {
+    await writeFile(outputPath, '', 'utf8');
+    return;
+  }
+
+  const headers = Array.from(
+    new Set(rows.flatMap((row) => Object.keys(row))),
+  );
+
+  const lines = [headers.join(',')];
+  for (const row of rows) {
+    lines.push(
+      headers
+        .map((key) => {
+          const raw = row[key];
+          const text = raw == null ? '' : String(raw);
+          if (/[",\n\r]/.test(text)) {
+            return `"${text.replace(/"/g, '""')}"`;
+          }
+          return text;
+        })
+        .join(','),
+    );
+  }
+
+  await writeFile(outputPath, `${lines.join('\n')}\n`, 'utf8');
 }

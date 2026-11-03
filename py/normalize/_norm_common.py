@@ -8,7 +8,7 @@
 
 统一字段（每行都有，缺失给默认值，不要省略键）：
   id           全局唯一，形如 <dataset>-000123
-  dataset      数据集短名（与 open-datasets/ 目录名一致，如 gsm8k / ceval-data / SWE-bench-data）
+  dataset      数据集短名（与 src-source/open-datasets/ 目录名一致，如 gsm8k / ceval-data / SWE-bench-data）
   category     math | code | instruction | chinese  （四类，与 DATASETS.md 第2章口径一致）
   task_type    open_qa | mcq | code_generation | swe | long_context | instruction_following
   lang         en | zh | ar | ...   （可识别的语种；未知留空）
@@ -17,7 +17,7 @@
   answer       标准答案（mcq 为选项文本；math 为最终数值/结果；swe 为 gold patch）
   options      字符串数组，非选择题为空数组 []
   solution     解题过程/rationale/推理步骤（无则空串）
-  source_file  原始文件相对 open-datasets/ 的路径（追溯用）
+  source_file  原始文件相对 src-source/open-datasets/ 的路径（追溯用）
   orig_id      原始记录 id（无则空串）
   metadata     dict，存放该数据集独有字段（repo/commit/test_cases/starter_code/level/subject/...）
 
@@ -34,8 +34,8 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OPEN = ROOT / "open-datasets"
-OUT = OPEN / "normalized"
+OPEN = ROOT / "src-source" / "open-datasets"
+OUT = ROOT / "src-formated" / "normalized"
 OUT.mkdir(parents=True, exist_ok=True)
 
 REQUIRED_KEYS = [

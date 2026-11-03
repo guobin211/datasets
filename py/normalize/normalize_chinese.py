@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把 8 个中文/本土基准归一化成统一 JSONL。只读 open-datasets/，产物写 open-datasets/normalized/。"""
+"""把 8 个中文/本土基准归一化成统一 JSONL。只读 src-source/open-datasets/，产物写 src-formated/normalized/。"""
 
 import ast
 import csv

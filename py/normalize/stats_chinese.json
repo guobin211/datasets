@@ -5,7 +5,7 @@
       "rows": 13948,
       "size_mb": 9.01,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/ceval-data.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/ceval-data.jsonl",
       "orig_rows": 13948
     },
     {
@@ -13,7 +13,7 @@
       "rows": 11917,
       "size_mb": 6.29,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/CMMLU.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/CMMLU.jsonl",
       "orig_rows": 11917
     },
     {
@@ -21,7 +21,7 @@
       "rows": 8418,
       "size_mb": 352.08,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/longbench-data.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/longbench-data.jsonl",
       "orig_rows": 8418
     },
     {
@@ -29,7 +29,7 @@
       "rows": 2811,
       "size_mb": 6.5,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/GAOKAO-Bench.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/GAOKAO-Bench.jsonl",
       "orig_rows": 2811
     },
     {
@@ -37,7 +37,7 @@
       "rows": 683,
       "size_mb": 1.09,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/AlignBench.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/AlignBench.jsonl",
       "orig_rows": 683
     },
     {
@@ -45,7 +45,7 @@
       "rows": 22870,
       "size_mb": 14.97,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/SafetyBench.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/SafetyBench.jsonl",
       "orig_rows": 22870
     },
     {
@@ -53,7 +53,7 @@
       "rows": 3000,
       "size_mb": 2.43,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/ChineseSimpleQA.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/ChineseSimpleQA.jsonl",
       "orig_rows": 3000
     },
     {
@@ -61,7 +61,7 @@
       "rows": 900,
       "size_mb": 0.82,
       "skipped": {},
-      "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/HalluQA.jsonl",
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/HalluQA.jsonl",
       "orig_rows": 900
     }
   ],

@@ -27,7 +27,7 @@ import build_formal_eval_csv as B
 
 DEFAULT_CSV = ROOT / "evaluation" / "open-dataset" / "eval-formal.csv"
 
-# 归一化层未覆盖的基准（见 open-datasets/normalized/COVERAGE.md 第三节）
+# 归一化层未覆盖的基准（见 evaluation/open-dataset/NORMALIZED-COVERAGE.md 第三节）
 KNOWN_GAPS = [
     ("GPQA (Diamond)", "专家级科学问答", "HF gated，账号未获授权"),
     ("HLE / Humanity's Last Exam", "专家级跨学科", "HF gated，账号未获授权"),

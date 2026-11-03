@@ -1,7 +1,7 @@
 //! 数据集准备：从本机（或 COS）挑选源数据 → 格式化成待评测数据集 → 抽样 → 写出。
 //!
-//! 产出的**规范列**与仓库既有宽表口径一致（`question, context, answer_<model>...`，
-//! 见 `scripts/build-eval-csv.ts`），因此 `datasets eval run` 可以直接吃，
+//! 产出的**规范列**与评测宽表口径一致（`question, context, answer_<model>...`，
+//! 列定义见 `src/service/evaluate.rs`），因此 `datasets eval run` 可以直接吃，
 //! 不必再传 `--question-field`。
 //!
 //! 处理顺序（顺序会影响统计口径，不要随意调换）：

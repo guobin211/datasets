@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把 5 个数学推理数据集归一化为统一 JSONL。只读 open-datasets/，产物写 open-datasets/normalized/。"""
+"""把 5 个数学推理数据集归一化为统一 JSONL。只读 src-source/open-datasets/，产物写 src-formated/normalized/。"""
 
 import json
 import re

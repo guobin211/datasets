@@ -1,4 +1,4 @@
-// 训练数据面板：training/data/categorized/ 四个分类桶的分布。
+// 训练数据面板：src-sampling/categorized/ 四个分类桶的分布。
 // 统计口径归 scripts/stat-categorized.ts，本文件只负责把 JSON 画成图，
 // 由 scripts/stat-dashboard.ts 内嵌进合并看板 html/dataset-stats.html。
 // ctx: { sub, kpis, grid, note, charts }

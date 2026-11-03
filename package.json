@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "start": "tsx scripts/merge-jsonl.ts"
+    "start": "tsx scripts/main.ts",
+    "ts:main": "tsx scripts/main.ts",
+    "py:main": "uv run python py/main.py",
+    "format": "pnpm format:normalize && pnpm format:split",
+    "format:normalize": "uv run python py/main.py normalize",
+    "format:split": "uv run python py/main.py split",
+    "sample": "tsx scripts/main.ts sample"
   },
   "keywords": [],
   "author": "",

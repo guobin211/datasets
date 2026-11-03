@@ -2,9 +2,9 @@
 """把 3 个代码/指令遵循数据集归一化成统一 JSONL。
 
 产物:
-  open-datasets/normalized/swe-bench-data.jsonl
-  open-datasets/normalized/livecodebench-data.jsonl
-  open-datasets/normalized/ifeval-data.jsonl
+  src-formated/normalized/swe-bench-data.jsonl
+  src-formated/normalized/livecodebench-data.jsonl
+  src-formated/normalized/ifeval-data.jsonl
 统计: py/normalize/stats_code.json
 """
 

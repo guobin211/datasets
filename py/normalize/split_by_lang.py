@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """按语种把归一化数据拆成「中英文」与「非中英文」两类。
 
-拆分发生在归一化层（open-datasets/normalized/），输出保持原始 13 键 schema 不变，
-因此两类数据都能直接喂给 build-formal-eval-csv.py 走同一条筛选流程。
+拆分发生在归一化层（src-formated/normalized/），输出保持原始 13 键 schema 不变，
+因此两类数据都能直接喂给 build_formal_eval_csv.py 走同一条筛选流程。
 
 三类输出（均为目录，目录内按 <dataset>.jsonl 组织）
 ----------------------------------------------
@@ -10,9 +10,9 @@ split/zh-en/         lang in (zh, en)         —— 主体，可直接构建评
 split/other-lang/    lang 非空且非中英        —— 待翻译，翻译后并入
 split/unlabeled/     lang 为空                —— 归一化漏标的英文代码数据，隔离存放
 
-**必须保留 <dataset> 维度**：build-formal-eval-csv.py 以文件名识别数据集并据此做
+**必须保留 <dataset> 维度**：build_formal_eval_csv.py 以文件名识别数据集并据此做
 分数据集配额。若把所有 zh/en 合并成一个 zh-en.jsonl，整个池会被当成单一数据集，
-2,000 条配额会把 22.8 万的池砍到 2,000 条——因此这里按数据集分文件而非合并输出。
+2,000 条配额会把整个池砍到 2,000 条——因此这里按数据集分文件而非合并输出。
 
 lang 为空的记录默认是 swe-bench / livecodebench 的 issue + git patch，属 code 类、
 体量巨大（3.4 亿字符，是真实外语数据的 18 倍），混进翻译队列会严重失真，
@@ -32,8 +32,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_NORM_DIR = ROOT / "open-datasets" / "normalized"
-DEFAULT_OUT_DIR = ROOT / "open-datasets" / "split"
+DEFAULT_NORM_DIR = ROOT / "src-formated" / "normalized"
+DEFAULT_OUT_DIR = ROOT / "src-formated" / "split"
 
 ZH_EN = ("zh", "en")
 
@@ -140,13 +140,13 @@ def main():
         "--norm-dir",
         type=Path,
         default=DEFAULT_NORM_DIR,
-        help="归一化数据目录（默认 open-datasets/normalized）",
+        help="归一化数据目录（默认 src-formated/normalized）",
     )
     ap.add_argument(
         "--out-dir",
         type=Path,
         default=DEFAULT_OUT_DIR,
-        help="拆分输出目录（默认 open-datasets/split）",
+        help="拆分输出目录（默认 src-formated/split）",
     )
     ap.add_argument(
         "--empty-lang",
@@ -168,9 +168,8 @@ def main():
     ap.add_argument(
         "--report",
         type=Path,
-        default=ROOT / "evaluation" / "open-dataset" / "SPLIT-REPORT.md",
-        help="统计报告输出路径（open-datasets/ 已 gitignore，"
-        "报告默认落到评测集目录以便入库）",
+        default=ROOT / ".agents" / "cache" / "SPLIT-REPORT.md",
+        help="统计报告输出路径（默认 .agents/cache/SPLIT-REPORT.md）",
     )
     args = ap.parse_args()
 
@@ -324,9 +323,8 @@ def main():
     L.append("## 2. 中英文类（split/zh-en/）")
     L.append("")
     L.append(
-        "这一类是评测集主体。现有 `evaluation/open-dataset/eval-formal.csv`"
-        "（27,916 条）就是它经筛选后的产物——已验证："
-        "以 `--norm-dir open-datasets/split/zh-en` 重跑，输出完全一致。"
+        "这一类是评测与抽样的主体，可直接作为 `build_formal_eval_csv.py` 的输入；"
+        "按数据集分文件保留配额与溯源维度。"
     )
     L.append("")
     ds_rows = []
@@ -484,7 +482,7 @@ def main():
     )
     L.append("- **选择题选项数量必须一致**：翻译后 `options` 长度应与原文相同。")
     L.append(
-        "- **翻译完的校验**：走 `build-formal-eval-csv.py` 同一套有效性过滤，"
+        "- **翻译完的校验**：走 `build_formal_eval_csv.py` 同一套有效性过滤，"
         "重点看「答案与选项对不上」这一类告警。"
     )
     L.append("")
@@ -492,32 +490,25 @@ def main():
     L.append("## 6. 后续流程")
     L.append("")
     L.append("```bash")
-    L.append("# 1) 中英文类：直接构建评测集（与现有 eval-formal.csv 等价）")
+    L.append("# 1) 中英文类：按需构建临时 CSV")
     L.append("python3 py/eval/build_formal_eval_csv.py \\")
-    L.append("    --norm-dir open-datasets/split/zh-en \\")
-    L.append("    --out evaluation/open-dataset/eval-zh-en.csv")
+    L.append("    --norm-dir src-formated/split/zh-en \\")
+    L.append("    --out out/eval-zh-en.csv")
     L.append("")
-    L.append("# 2) 非中英文类：翻译后落到 split/other-lang-zh/ ，再跑同一条流程")
+    L.append("# 2) 非中英文类：生成翻译队列并执行翻译")
+    L.append("python3 py/translate/extract_foreign.py")
     L.append("python3 py/translate/translate_batch.py \\")
-    L.append("    --in open-datasets/split/other-lang \\")
-    L.append("    --out open-datasets/split/other-lang-zh")
-    L.append("python3 py/eval/build_formal_eval_csv.py \\")
-    L.append("    --norm-dir open-datasets/split/other-lang-zh \\")
-    L.append("    --out evaluation/open-dataset/eval-translated.csv")
-    L.append("")
-    L.append("# 3) 合并两类")
-    L.append("python3 py/eval/merge_eval_csv.py eval-zh-en.csv eval-translated.csv \\")
-    L.append("    --out evaluation/open-dataset/eval-formal.csv")
+    L.append("    --in src-sampling/translation/pending.jsonl")
     L.append("```")
     L.append("")
     L.append(
         "> 注意：`--norm-dir` 必须指向**目录**（内含 `<dataset>.jsonl`）。"
         "若指向单个合并文件，全部记录会被识别为同一数据集，"
-        "2,000 条配额会把 22.8 万的池直接砍到 2,000 条。"
+        "2,000 条配额会把整个池直接砍到 2,000 条。"
     )
     L.append("")
     L.append(
-        "> 注：`build-formal-eval-csv.py` 的 `KEEP_LANGS` 目前只认 `zh`/`en`，"
+        "> 注：`build_formal_eval_csv.py` 的 `KEEP_LANGS` 目前只认 `zh`/`en`，"
         "翻译后的记录需把 `lang` 改写为 `zh` 才能通过语种过滤。"
     )
     L.append("")

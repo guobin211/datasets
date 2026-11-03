@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""独立 Review：核查 open-datasets/normalized/ 26 个归一化文件的完整性与质量。
+"""独立 Review：核查 src-formated/normalized/ 26 个归一化文件的完整性与质量。
 独立于组织者的 _aggregate.py，从零实现，避免复用其可能存在的盲区。"""
 
 import glob
@@ -8,7 +8,7 @@ import os
 from collections import Counter
 from pathlib import Path
 
-NORM_DIR = Path(__file__).resolve().parents[2] / "open-datasets" / "normalized"
+NORM_DIR = Path(__file__).resolve().parents[2] / "src-formated" / "normalized"
 REQUIRED = [
     "id",
     "dataset",

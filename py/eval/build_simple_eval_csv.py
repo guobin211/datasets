@@ -32,7 +32,7 @@ except ModuleNotFoundError:
     sys.exit("缺少 pyarrow，请先 pip install pyarrow")
 
 ROOT = Path(__file__).resolve().parents[2]
-OPEN = ROOT / "open-datasets"
+OPEN = ROOT / "src-source" / "open-datasets"
 
 FIELDS = [
     "id",

@@ -160,11 +160,11 @@ pub enum DatasetCommand {
 ///
 /// ```text
 /// # 随机抽样 1000 条，输出规范列 question + lang
-/// datasets dataset prepare third-dataset/a.jsonl --sample 1000 --seed 42 \
-///   --keep lang --out out/eval.jsonl
+/// datasets dataset prepare src-source/third-dataset/a.jsonl --sample 1000 --seed 42 \
+///   --keep lang --out src-sampling/eval.jsonl
 ///
 /// # 条件抽样：只要中文长问题，按 category 分层各取 10%
-/// datasets dataset prepare csv/eval.csv cos://my-bucket/more.jsonl \
+/// datasets dataset prepare src-formated/normalized/PolyMath.jsonl cos://my-bucket/more.jsonl \
 ///   --where "lang = 'zh'" --where "len(question) > 20" \
 ///   --sample 10% --sample-by category --dedupe --out out/eval.csv
 /// ```
@@ -250,7 +250,7 @@ pub enum EvalCommand {
 /// `eval run` 参数。
 ///
 /// ```text
-/// datasets eval run --input csv/eval.csv --models opus-4-8,gpt-5-5 --out out/eval.csv
+/// datasets eval run --input src-sampling/eval.jsonl --models opus-4-8,gpt-5-5 --out out/eval.csv
 /// datasets eval run --input cos://my-bucket/eval/test.jsonl --models deepseek-v3 --out out/eval.csv
 /// ```
 #[derive(Args, Debug)]

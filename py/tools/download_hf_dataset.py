@@ -7,10 +7,10 @@
     uv run python py/tools/download_hf_dataset.py <repo_id> <dest_dir> [--skip-ext pdf PDF]
 
 已下载数据集：
-    nguha/legalbench         → open-datasets/legalbench
-    doolayer/LawBench        → open-datasets/LawBench
-    theatticusproject/cuad   → open-datasets/CUAD（--skip-ext pdf PDF，合同原文 PDF 未下）
-    mercor/apex-agents       → open-datasets/apex-agents（gated，仅元数据+task/gold 文件）
+    nguha/legalbench         → src-source/open-datasets/legalbench
+    doolayer/LawBench        → src-source/open-datasets/LawBench
+    theatticusproject/cuad   → src-source/open-datasets/CUAD（--skip-ext pdf PDF，合同原文 PDF 未下）
+    mercor/apex-agents       → src-source/open-datasets/apex-agents（gated，仅元数据+task/gold 文件）
 """
 
 import json

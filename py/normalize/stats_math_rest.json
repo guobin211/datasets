@@ -4,7 +4,7 @@
     "rows": 12500,
     "size_mb": 12.73,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/math.jsonl",
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/math.jsonl",
     "orig_rows": 12500
   },
   {
@@ -12,7 +12,7 @@
     "rows": 3740,
     "size_mb": 2.02,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/mmath.jsonl",
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/mmath.jsonl",
     "orig_rows": 3740
   },
   {
@@ -20,7 +20,7 @@
     "rows": 37901,
     "size_mb": 34.74,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/mathqa.jsonl",
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/mathqa.jsonl",
     "orig_rows": 37901
   },
   {
@@ -28,7 +28,7 @@
     "rows": 12500,
     "size_mb": 19.64,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/apple_gsm_symbolic.jsonl",
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/apple_gsm_symbolic.jsonl",
     "orig_rows": 12500
   },
   {
@@ -36,7 +36,7 @@
     "rows": 12952,
     "size_mb": 18.47,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/gsm_plus.jsonl",
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/gsm_plus.jsonl",
     "orig_rows": 12952
   },
   {
@@ -44,7 +44,7 @@
     "rows": 2305,
     "size_mb": 1.11,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/asdiv.jsonl",
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/asdiv.jsonl",
     "orig_rows": 2305
   },
   {
@@ -52,7 +52,7 @@
     "rows": 32611,
     "size_mb": 57.77,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/mathmist.jsonl",
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/mathmist.jsonl",
     "orig_rows": 32611
   }
 ]

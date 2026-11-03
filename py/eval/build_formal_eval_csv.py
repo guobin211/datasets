@@ -1,5 +1,5 @@
 """
-构建正式评测集：从 open-datasets/normalized/ 抽取中英文题目，过滤无效数据后输出 CSV。
+构建正式评测集：从 src-formated/normalized/ 抽取中英文题目，过滤无效数据后输出 CSV。
 
 设计要点
 --------
@@ -28,7 +28,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-NORM_DIR = ROOT / "open-datasets" / "normalized"
+NORM_DIR = ROOT / "src-formated" / "normalized"
 DEFAULT_OUT = ROOT / "evaluation" / "upload" / "eval-formal.csv"
 
 KEEP_LANGS = ("zh", "en")

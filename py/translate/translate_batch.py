@@ -23,7 +23,7 @@
   python3 py/translate/translate_batch.py --dry-run --limit 3
   # 跑小样
   TRANSLATE_API_KEY=sk-xxx python3 py/translate/translate_batch.py \
-      --in open-datasets/translated/sample-100.jsonl
+      --in src-sampling/translation/sample-100.jsonl
   # 跑全量
   TRANSLATE_API_KEY=sk-xxx python3 py/translate/translate_batch.py
 """
@@ -41,7 +41,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-OUT_DIR = ROOT / "open-datasets" / "translated"
+OUT_DIR = ROOT / "src-sampling" / "translation"
 
 LANG_NAME = {
     "bn": "孟加拉语",

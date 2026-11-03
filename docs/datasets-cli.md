@@ -22,8 +22,8 @@
 | 对外提供服务 | HTTP / MCP 端点只服务本机工具链，默认监听 `127.0.0.1` |
 | 生成 HTML 看板 | 仓库里 HTML 看板由 `scripts/stat-dashboard.ts` 统一产出，本工具只出 JSON / 表格 |
 
-> 与仓库其他部分的关系：`scripts/`（TS）与 `py/`（Python）负责**既有数据的归一化与统计**；
-> `datasets`（Rust）负责**评测执行与数据集流转**。三者通过 `csv/` 与 `evaluation/upload/` 下的文件交接。
+> 与仓库其他部分的关系：`scripts/`（TS）与 `py/`（Python）负责**原始数据归一化与分类**；
+> `datasets`（Rust）负责**数据抽样、评测执行与结果流转**。三者通过 `src-formated/` 与 `src-sampling/` 中的 JSONL 交接。
 
 ## 2. 架构分层
 
@@ -135,7 +135,7 @@ PRAGMA：`journal_mode=WAL`、`synchronous=NORMAL`、`foreign_keys=ON`、`busy_t
 
 | 写法 | 含义 |
 |---|---|
-| `csv/eval.csv`、`training/in.jsonl` | 本地文件 |
+| `src-formated/normalized/gsm8k.jsonl`、`src-sampling/eval/input.jsonl` | 本地文件 |
 | `cos://my-bucket/eval/test.jsonl` | 配置中 `name = "my-bucket"` 的桶里的对象 |
 | `cos:///eval/test.jsonl` | 省略存储名 → 使用 `name = "default"` 的桶 |
 | `s3://...`、`https://...` | **直接拒绝**，避免被当成本地相对路径 |
@@ -154,8 +154,8 @@ csv 行写成 jsonl 时按表头顺序手工拼装，列序稳定。注意 `data
 
 ### 5.1 待评测数据集的规范列
 
-`dataset prepare` 的产出是"待评测数据集"，列口径与仓库既有宽表一致
-（`question, context, answer_<model>...`，见 `scripts/build-eval-csv.ts`）：
+`dataset prepare` 的产出是"待评测数据集"，列口径与 `eval run` 输出的评测宽表一致
+（`question, context, answer_<model>...`，列定义见 `src/service/evaluate.rs`）：
 
 | 列 | 来源 | 说明 |
 |---|---|---|
@@ -263,29 +263,40 @@ datasets [-c/--config <path>] [--mode dev|prod] [--json] [-v...] <command>
 
 ### 9.1 `dataset` —— 挑选、格式化、抽样、传输
 
+日常抽样可用 `pnpm sample` 代替 `datasets dataset prepare`，参数完全透传。
+参数直接跟在 `pnpm sample` 后，不要额外添加 `--`：
+
+```bash
+pnpm sample src-formated/normalized/PolyMath.jsonl \
+  --where "lang = 'zh'" --sample 1000 --sample-by category --seed 42 \
+  --keep lang,category --out src-sampling/eval/poly-math-zh-1k.jsonl
+```
+
+原生命令示例：
+
 ```bash
 # 0) 先看一眼源数据：有哪些列、非空率、自动探测到哪个是问题列
-datasets dataset inspect third-dataset/gpt-5-5-distilled/merge.jsonl
+datasets dataset inspect src-source/third-dataset/gpt-5-5-distilled/merge.jsonl
 datasets dataset inspect cos://my-bucket/raw/dump.csv --limit 200
 
 # 1) 随机抽样：源列 prompt 自动映射成规范列 question，额外保留 lang
-datasets dataset prepare third-dataset/gpt-5-5-distilled/merge.jsonl \
+datasets dataset prepare src-source/third-dataset/gpt-5-5-distilled/merge.jsonl \
   --sample 1000 --seed 42 --keep lang \
-  --out out/eval-1k.jsonl
+  --out src-sampling/eval/eval-1k.jsonl
 
 # 2) 条件抽样：多源合并 → 条件筛选 → 按 category 分层各取 10% → 去重
-datasets dataset prepare csv/eval.csv cos://my-bucket/raw/more.jsonl \
-  --question-field prompt --keep lang,category \
+datasets dataset prepare src-formated/normalized/PolyMath.jsonl cos://my-bucket/raw/more.jsonl \
+  --keep lang,category \
   --where "lang = 'zh'" --where "len(question) > 20" \
   --sample 10% --sample-by category --seed 42 --dedupe \
   --out out/eval-zh.csv
 
 # 3) 干跑：只看统计（读入 / 空问题 / 重复 / 命中 / 待写出），不落文件
-datasets dataset prepare csv/eval.csv --where "lang = 'zh'" --sample 5% --dry-run
+datasets dataset prepare src-formated/normalized/PolyMath.jsonl --where "lang = 'zh'" --sample 5% --dry-run
 
 # 4) 本地 ⇄ 对象存储
-datasets dataset upload   out/eval-1k.jsonl --cos cos://my-bucket/eval/eval-1k.jsonl
-datasets dataset download --cos cos://my-bucket/eval/eval-1k.jsonl out/eval-1k.jsonl --overwrite
+datasets dataset upload   src-sampling/eval/eval-1k.jsonl --cos cos://my-bucket/eval/eval-1k.jsonl
+datasets dataset download --cos cos://my-bucket/eval/eval-1k.jsonl src-sampling/eval/eval-1k.jsonl --overwrite
 ```
 
 `prepare` 的处理顺序（会影响统计口径，不要凭感觉调换）：
@@ -316,7 +327,7 @@ datasets dataset download --cos cos://my-bucket/eval/eval-1k.jsonl out/eval-1k.j
 ```bash
 # 基本用法：本地数据集 + 两个模型
 datasets eval run \
-  --input csv/eval.csv --models opus-4-8,gpt-5-5 \
+  --input src-sampling/eval/eval-1k.jsonl --models opus-4-8,gpt-5-5 \
   --out out/eval-wide.csv
 
 # 远端数据集 + 自定义问题列 + system 提示词 + 限量冒烟
@@ -333,7 +344,7 @@ datasets eval collect out/eval-wide.csv --format json
 # 结果回流：挑出"某模型答成功且是中文"的行作为下一轮数据集，并回传对象存储
 datasets eval feedback out/eval-wide.csv \
   --where "error_opus_4_8 = ''" --where "lang = 'zh'" \
-  --out out/next-round.jsonl --to-cos cos://my-bucket/train/next-round.jsonl
+  --out src-sampling/eval/next-round.jsonl --to-cos cos://my-bucket/train/next-round.jsonl
 ```
 
 `eval collect` 按 `answer_<slug>` 列反查模型，输出每个模型的
@@ -364,13 +375,13 @@ datasets dashboard [--http 127.0.0.1:7070]
 
 ```bash
 # 探查 → 准备 → 评测 → 汇总 → 回流
-datasets dataset inspect  third-dataset/raw/merge.jsonl
-datasets dataset prepare  third-dataset/raw/merge.jsonl \
+datasets dataset inspect  src-source/third-dataset/gpt-5-5-distilled/merge.jsonl
+datasets dataset prepare  src-source/third-dataset/gpt-5-5-distilled/merge.jsonl \
     --where "lang = 'zh'" --sample 2000 --sample-by category --seed 42 --dedupe \
-    --keep lang,category --out out/eval-2k.jsonl
-datasets eval run         --input out/eval-2k.jsonl --models opus-4-8,gpt-5-5 --out out/wide.csv
+    --keep lang,category --out src-sampling/eval/eval-2k.jsonl
+datasets eval run         --input src-sampling/eval/eval-2k.jsonl --models opus-4-8,gpt-5-5 --out out/wide.csv
 datasets eval collect     out/wide.csv
-datasets eval feedback    out/wide.csv --where "error_opus_4_8 = ''" --out out/next.jsonl
+datasets eval feedback    out/wide.csv --where "error_opus_4_8 = ''" --out src-sampling/eval/next.jsonl
 ```
 
 `prepare` 产出的是规范列数据集，所以第三步**不需要** `--question-field`。

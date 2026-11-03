@@ -6,7 +6,7 @@
     "skipped": {
       "ssla_company_defendants: empty_answer": 9
     },
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/legalbench.jsonl"
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/legalbench.jsonl"
   },
   "CUAD": {
     "dataset": "CUAD",
@@ -15,13 +15,13 @@
     "skipped": {
       "no_highlight_answer": 14208
     },
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/CUAD.jsonl"
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/CUAD.jsonl"
   },
   "LawBench": {
     "dataset": "LawBench",
     "rows": 2500,
     "size_mb": 4.56,
     "skipped": {},
-    "path": "/Users/guobin/tencent/datasets/open-datasets/normalized/LawBench.jsonl"
+    "path": "/Users/guobin/tencent/datasets/src-formated/normalized/LawBench.jsonl"
   }
 }

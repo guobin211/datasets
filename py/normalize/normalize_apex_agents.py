@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""归一化 mercor/apex-agents → open-datasets/normalized/apex-agents.jsonl。
+"""归一化 mercor/apex-agents → src-formated/normalized/apex-agents.jsonl。
 
-原始数据：open-datasets/apex-agents/（gated repo，CC-BY 4.0，仅限评测用途）
+原始数据：src-source/open-datasets/apex-agents/（gated repo，CC-BY 4.0，仅限评测用途）
   - tasks_and_rubrics.json   480 个任务：prompt / gold_response / rubric（二元判分标准）
   - world_descriptions.json  33 个 world 场景：描述 + 内置应用列表
 
@@ -15,7 +15,7 @@
   - lang=en，split 为空（评测基准无 train/test 之分）
 
 运行：仓库根目录 `uv run python py/normalize/normalize_apex_agents.py`
-产物：open-datasets/normalized/apex-agents.jsonl + py/normalize/stats_apex_agents.json
+产物：src-formated/normalized/apex-agents.jsonl + py/normalize/stats_apex_agents.json
 """
 
 from __future__ import annotations

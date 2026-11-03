@@ -1,10 +1,10 @@
-# open-datasets 归一化规范（v1，2026-09-18）
+# 开源数据归一化规范
 
-把 `open-datasets/` 下 23 个已下载外部评测基准统一成 JSONL。**只读原始目录，绝不改动**；产物写到 `open-datasets/normalized/<dataset>.jsonl`。
+把 `src-source/open-datasets/` 下已下载的外部评测基准统一成 JSONL。**只读原始目录，绝不改动**；产物写到 `src-formated/normalized/<dataset>.jsonl`。
 
 ## 怎么写脚本
 
-- 用隔离 Python（含 pyarrow）；也可在项目根 `uv sync` 后用 `uv run python`。
+- 用隔离 Python（含 pyarrow）；也可在项目根 `uv sync` 后用 `uv run python`。全部归一化并重跑拆分可执行 `pnpm format`，只重跑拆分执行 `pnpm format:split`。
 - 脚本放 `py/normalize/normalize_<cluster>.py`，直接 `from _norm_common import make_record, JsonlWriter, load_json_array, OPEN`（同目录运行时自动在 `sys.path` 上，无需手动插入路径）。
 - 每个数据集一个 `JsonlWriter(dataset)` 实例，逐条 `write(make_record(...))`；无法解析/缺关键字段的记录 `writer.skip('原因')` 计数，**不要静默丢弃**。
 - 跑完打印该数据集：输出路径、行数、跳过计数、体积；并把 `writer.close()` 的 dict 收集起来最后 `json.dump` 到 `py/normalize/stats_<cluster>.json`。

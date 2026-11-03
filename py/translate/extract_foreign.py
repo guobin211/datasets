@@ -26,8 +26,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-NORM_DIR = ROOT / "open-datasets" / "normalized"
-OUT_DIR = ROOT / "open-datasets" / "translated"
+NORM_DIR = ROOT / "src-formated" / "normalized"
+OUT_DIR = ROOT / "src-sampling" / "translation"
 
 KEEP = ("zh", "en")
 

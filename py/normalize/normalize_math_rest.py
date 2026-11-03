@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""归一化 7 个数学推理数据集到 open-datasets/normalized/<dataset>.jsonl。
+"""归一化 7 个数学推理数据集到 src-formated/normalized/<dataset>.jsonl。
 
 只读原始文件，绝不修改。category 一律 math。
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 from _norm_common import OPEN, JsonlWriter, load_json_array, make_record
 
-ROOT = OPEN  # open-datasets/
+ROOT = OPEN  # src-source/open-datasets/
 stats = []
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""归一化法律三件套 → open-datasets/normalized/{legalbench,CUAD,LawBench}.jsonl。
+"""归一化法律三件套 → src-formated/normalized/{legalbench,CUAD,LawBench}.jsonl。
 
-原始数据（open-datasets/ 下，只读）：
+原始数据（src-source/open-datasets/ 下，只读）：
   legalbench/   nguha/legalbench，162 个法律推理子任务，每任务 train/test.tsv
                 （列 index/answer/text）+ task_metadata.json（instruction 模板含
                 {{text}} 占位、answer_space、eval_method）
@@ -22,7 +22,7 @@
               ≥2 个 → mcq（标准字母入 metadata.answer_letter），否则 open_qa
 
 运行：仓库根目录 `uv run python py/normalize/normalize_legal.py`
-产物：open-datasets/normalized/{legalbench,CUAD,LawBench}.jsonl
+产物：src-formated/normalized/{legalbench,CUAD,LawBench}.jsonl
      + py/normalize/stats_legal.json
 """
 

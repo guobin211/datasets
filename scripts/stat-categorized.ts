@@ -1,13 +1,13 @@
 #!/usr/bin/env tsx
 /**
- * 统计 training/data/categorized/ 下 4 个会话分类桶的分布情况。
+ * 统计 src-sampling/categorized/ 下 4 个会话分类桶的分布情况。
  *
  * 输出：
  *   1. .agents/cache/categorized-stats.json   结构化统计结果（可复用）
- *   2. training/data/categorized-stats.html   自包含 ECharts 看板 —— **默认不生成**
+ *   2. src-sampling/categorized-stats.html   自包含 ECharts 看板 —— **默认不生成**
  *
  * 用法：
- *   npx tsx scripts/stat-categorized.ts [--root training/data/categorized]
+ *   npx tsx scripts/stat-categorized.ts [--root src-sampling/categorized]
  *
  * 设计要点：
  *   - 全量流式读取（createReadStream + readline），1.6G 数据不落内存
@@ -274,11 +274,11 @@ interface BucketOut {
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
-      root: { type: "string", default: join(ROOT, "training", "data", "categorized") },
+      root: { type: "string", default: join(ROOT, "src-sampling", "categorized") },
       // 留空 = 不生成 HTML 看板（看板统一走 stat-dashboard.ts）
       out: { type: "string", default: "" },
       json: { type: "string", default: join(ROOT, ".agents", "cache", "categorized-stats.json") },
-      echarts: { type: "string", default: join(ROOT, "evaluation", "open-dataset", "vendor", "echarts.min.js") },
+      echarts: { type: "string", default: join(ROOT, "html", "vendor", "echarts.min.js") },
       "top-source": { type: "string", default: "14" },
     },
   });

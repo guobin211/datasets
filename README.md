@@ -1,118 +1,119 @@
-# datasets — LLM 对话数据集处理工具集
+# datasets — LLM 数据集处理工具集
 
-将多来源、多格式的 LLM 对话数据（Distilled / Traces / Session Logs）归一化为统一的
-`messages` 格式，按会话特征分类，供下游**微调**与**评测**使用。TypeScript + Python
-双语言实现，流式处理大文件。
+将多来源、多格式的 LLM 数据整理为标准 JSONL，并完成会话分类、语种拆分、翻译队列与抽样。
+TypeScript 和 Python 负责数据流水线，Rust CLI 负责本地数据准备与评测。
 
 ## 目录结构
 
-```
+```text
 datasets/
-├── third-dataset/            # 【source】自产原始数据（gitignored，13 个数据源，多格式 JSONL）
+├── src-source/               # 第三方原始数据（gitignored）
+│   ├── third-dataset/        # 多格式对话数据，按数据源分目录
+│   └── open-datasets/        # 开源数据集及配套源码
 │
-├── training/                 # 【training】训练阶段（微调输入 + 训练骨架）
-│   ├── data/categorized/     #   微调输入：4 个分类桶（question / question-answer /
-│   │                         #     question-answer-tool-call / question-multi）
-│   ├── config/  scripts/     #   训练配置 / 脚本（骨架，待补）
-│   └── README.md
+├── src-formated/             # 格式化后的标准 JSONL（gitignored）
+│   ├── normalized/           # 开源数据归一化产物，统一 13 字段
+│   └── split/                # 按语种拆分，字段结构保持不变
 │
-├── evaluation/               # 【evaluation】评测阶段
-│   ├── upload/               #   统一 CSV 出口（所有成品评测集，见 evaluation/README.md）
-│   │   ├── eval-dataset-*.csv    # 自产 16 列模型宽表（full / 50k / 6k / 100 / sample）
-│   │   ├── eval-formal.csv       # 开源正式评测集（中英，全难度）
-│   │   ├── eval-formal-legal-agent.csv  # 法律（legalbench/CUAD/LawBench）+ 智能体（APEX-Agents）评测集
-│   │   ├── eval-simple-1000.csv  # 开源小学数学简单题
-│   │   └── eval-{mcq,open_qa,zh-en-full,zh-en-full-nolb}-zh-en.csv  # 按题型/全量导出
-│   ├── third-dataset/        #   自产中间产物：qa-csv/（16 份单模型 Q&A，gitignored）
-│   │                         #     + eval-question-classify*.csv（问题三维分类）
-│   └── open-dataset/         #   开源报告与看板：COVERAGE-STATS.md / SPLIT-REPORT.md /
-│                             #     eval-formal-distribution.png
+├── src-sampling/             # 分类与抽样 JSONL
+│   ├── categorized/          # 4 个会话分类桶（Git LFS 入库）
+│   └── translation/          # 翻译队列与翻译抽样（gitignored）
 │
-├── open-datasets/            # 【参考】外部开源数据集（gitignored，体积大不入库）
-│
-├── scripts/                  # TypeScript 流水线脚本
-│   ├── merge-jsonl.ts        #   【format】合并 source 目录 JSONL → merge.jsonl
-│   ├── cate-jsonl.ts         #   【format】标准 messages 格式分类
-│   ├── cate-other-jsonl.ts   #   【format】6 种非标准格式分类（自动探测）
-│   ├── extract-qa-csv.ts     #   【evaluation】分类产物 → 单模型 Q&A CSV
-│   ├── build-eval-csv.ts     #   【evaluation】单模型 Q&A → 16 列评测宽表
-│   ├── classify-eval-questions.ts + question-classifier.ts  # 评测问题三维分类
-│   ├── stat-categorized.ts   #   【stat】分类桶统计（默认仅出 JSON）
-│   ├── stat-dashboard.ts     #   【stat】合并统计看板 → html/dataset-stats.html
-│   │   └── stat-dashboard/   #     绘图片段 train.js / eval.js（按 Tab 拆分）
-│   ├── types.ts / utils.ts   #   共享类型与工具
-│
-├── py/                       # Python 脚本：开源数据归一化 / 翻译 / 评测集（见 py/README.md）
-│
-├── docs/                     # 文档：dataset-platform/（本项目）+ tech-reference/（外部参考）
-│
-├── html/                     # 所有生成的 HTML 看板（gitignored）：dataset-stats.html /
-│                             #   eval-question-classify.html + vendor/echarts.min.js
-├── AGENTS.md                 # 项目开发指引（架构、规则、命令）
-├── DATASETS.md               # 全量数据规模 / 来源 / 外部数据集清单
-├── package.json / tsconfig.json / pyproject.toml / uv.lock
-└── ...
+├── scripts/                  # TypeScript 数据流水线与统计脚本
+├── py/                       # Python 归一化、翻译与评测脚本
+├── src/                      # Rust 本地评测 CLI
+├── docs/                     # 项目方案、CLI 文档与外部技术参考
+└── html/                     # 生成的 HTML 看板与共用静态资源
 ```
+
+### 目录边界
+
+- `src-source/` 只放原始数据，不放归一化、分类或抽样产物。
+- `src-formated/` 只放统一字段的 JSONL；目录名固定使用 `formated`。
+- `src-sampling/` 只放分类完成或抽样完成的 JSONL。
+- 原始数据、标准化数据和抽样数据不得混放；非 JSONL 报告不放入这三类数据目录。
+
+## 标准数据结构
+
+`src-formated/` 每行均包含以下 13 个字段，缺失值使用空串、空数组或空对象，不能省略键：
+
+```text
+id, dataset, category, task_type, lang, split, question, answer,
+options, solution, source_file, orig_id, metadata
+```
+
+`src-sampling/categorized/` 的记录结构为：
+
+```text
+messages, source_file, line, category
+```
+
+其中 `messages` 是标准对话数组，`category` 为四个分类桶之一。
 
 ## 数据流水线
 
+```text
+src-source/third-dataset/<source>/*.jsonl
+  → scripts/merge-jsonl.ts
+  → scripts/cate-jsonl.ts / cate-other-jsonl.ts
+  → src-sampling/categorized/<category>/<source>.jsonl
+
+src-source/open-datasets/
+  → py/normalize/normalize_*.py
+  → src-formated/normalized/<dataset>.jsonl
+  → py/normalize/split_by_lang.py
+  → src-formated/split/{zh-en,other-lang,unlabeled}/
+
+src-formated/normalized/ 或 src-formated/split/other-lang/
+  → py/translate/extract_foreign.py
+  → src-sampling/translation/
 ```
-source              format                    evaluation                training
 
-third-dataset/ → merge.jsonl → cate-*.ts → training/data/categorized/ ──→ 微调
-    │                                                  │
-    └────────────────── extract-qa-csv.ts ─────────────↓
-                   evaluation/third-dataset/qa-csv/ → build-eval-csv.ts
-                                         → evaluation/upload/eval-dataset-*.csv
+## 会话分类规则
 
-open-datasets/ ── py/normalize/（归一化 → 语种拆分）── py/eval/build_*.py
-                                            → evaluation/upload/eval-{formal*,simple-*,*zh-en*}.csv
-```
+- `real_user >= 2` → `question-multi`
+- 否则存在 tool 消息 → `question-answer-tool-call`
+- 否则存在 assistant 消息 → `question-answer`
+- 每条会话同时向 `question` 桶输出一份仅含真实用户提问的副本
 
-## 分类桶规则
-
-* `real_user >= 2` → `question-multi`；有 tool 消息 → `question-answer-tool-call`；
-  有 assistant → `question-answer`；其余仅进 `question`
-* 每条会话必入 `question` 桶（派生桶，条数 ≈ 其余三桶之和）；
-  `question-answer` 桶剔除 tool 消息
-
-## 项目规则（脚本目录）
-
-* Python 脚本统一放在 `py/` 目录
-* TypeScript 脚本统一放在 `scripts/` 目录
+`question` 是派生桶，统计数据集规模或微调配比时，应以另外三个真实桶为准。
 
 ## 常用命令
 
-```
-pnpm install                     # 安装依赖
-npx tsc --noEmit                 # 类型检查
+```bash
+pnpm install
+npx tsc --noEmit
 
-# format：合并 + 分类
-tsx scripts/merge-jsonl.ts --root third-dataset
-tsx scripts/cate-jsonl.ts third-dataset/<source>/merge.jsonl        # 标准格式
-tsx scripts/cate-other-jsonl.ts third-dataset/<source>/merge.jsonl  # 非标准格式
+# 合并与分类第三方对话数据
+npx tsx scripts/merge-jsonl.ts --root src-source/third-dataset
+npx tsx scripts/cate-jsonl.ts src-source/third-dataset/<source>/merge.jsonl
+npx tsx scripts/cate-other-jsonl.ts src-source/third-dataset/<source>/merge.jsonl
 
-# stat：分类桶统计（默认仅出 JSON）+ 合并统计看板（html/dataset-stats.html）
+# 一键归一化全部开源数据并重跑语种拆分
+pnpm format
+
+# 只重跑归一化或语种拆分
+pnpm format:normalize
+pnpm format:split
+
+# 生成翻译队列
+uv run python py/translate/extract_foreign.py
+
+# 分类产物统计
 npx tsx scripts/stat-categorized.ts
-npx tsx scripts/stat-dashboard.ts
 
-# classify：评测问题三维分类（全量 15.6 万条需加大堆内存；--compare 额外算子集占比）
-NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/classify-eval-questions.ts \
-  --input evaluation/upload/eval-dataset-full.csv \
-  --compare evaluation/upload/eval-dataset-6k.csv \
-  --out html/eval-question-classify.html
-
-# evaluation：抽取单模型 Q&A + 构建评测宽表（大文件需加大堆内存）
-tsx scripts/extract-qa-csv.ts
-NODE_OPTIONS="--max-old-space-size=8192" npx tsx scripts/build-eval-csv.ts \
-  --out evaluation/upload/eval-dataset-6k.csv,evaluation/upload/eval-dataset-full.csv --limit 6000,0
+# 抽样生成新数据集（参数直接跟在 pnpm sample 后，不额外加 --）
+pnpm sample src-formated/normalized/PolyMath.jsonl \
+  --where "lang = 'zh'" --sample 1000 --sample-by category --seed 42 \
+  --keep lang,category --out src-sampling/eval/poly-math-zh-1k.jsonl
 ```
 
-## Git 约定
+## 项目约定
 
-* 大文件统一走 Git LFS（见 `.gitattributes`）：`*.jsonl` / `*.csv` / `*.parquet` /
-  `*.arrow` / `*.bin` / `*.h5` 均 LFS 跟踪，仓库内只存指针
-* `csv/eval.csv`（完整评测集）、`csv/train.csv`（完整训练集，gitignored，本地重建）由 `scripts/build-consolidated-csv.ts` 生成
-* 已 gitignore：`third-dataset/`、`open-datasets/`、
-  `evaluation/third-dataset/qa-csv/`、`evaluation/upload/` 下第三方原数据的归一化全量导出、
-  `*.html` 看板、`.agents/`、`.codebuddy/` 等（构建产物可由脚本重新生成）
+- Python 脚本放在 `py/`，TypeScript 脚本放在 `scripts/`，Rust 代码放在 `src/`。
+- 字段名统一使用下划线；模型名写入字段前通过 `toFieldSlug()` 或 `to_field_slug()` 规范化。
+- 大文件使用流式读取与写入，避免一次性加载到内存。
+- `*.jsonl`、`*.csv`、`*.parquet`、`*.arrow`、`*.bin`、`*.h5` 按 `.gitattributes` 使用 Git LFS。
+- `src-source/`、`src-formated/`、`src-sampling/translation/` 为本地数据产物，不入库；分类桶按现有策略保留 Git LFS 跟踪。
+
+详细数据清单见 [DATASETS.md](DATASETS.md)，开发与实现规范见 [AGENTS.md](AGENTS.md)。

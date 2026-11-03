@@ -1,17 +1,18 @@
 # ===== 自定义忽略 =====
-# 注意：以下两条必须锚定仓库根（带前导 /），否则会误伤 evaluation/third-dataset/ 等同名目录
+# 注意：原始数据规则必须锚定仓库根（带前导 /），避免误伤 evaluation/third-dataset/ 等同名目录
 .agents
 .codebuddy
 .workbuddy
-/third-dataset
+/src-source/
 /cache
 
 # ===== 数据构建产物（可由 scripts/ 重新生成，不入库）=====
 # 成品评测集在 evaluation/upload/，由 .gitattributes 走 Git LFS 入库，此处不忽略
 evaluation/third-dataset/qa-csv/
+/src-formated/
+/src-sampling/translation/
 
-# ===== 外部开源数据集（体积大，不入库）=====
-open-datasets/
+# ===== 外部开源数据集已统一迁入 src-source/open-datasets/ =====
 # 完整训练集（1.6G，由 scripts/build-consolidated-csv.ts train 重建）
 csv/train.csv
 # 第三方原数据的归一化全量导出（精选后的 eval-formal*.csv 才入库）
