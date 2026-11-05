@@ -1,0 +1,52 @@
+{
+  "per_dataset": [
+    {
+      "dataset": "bfcl",
+      "rows": 5251,
+      "size_mb": 9.87,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/bfcl.jsonl",
+      "orig_rows": 5251
+    },
+    {
+      "dataset": "apex-accounting",
+      "rows": 10,
+      "size_mb": 0.03,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/apex-accounting.jsonl",
+      "orig_rows": 10
+    },
+    {
+      "dataset": "apex-v1-extended",
+      "rows": 100,
+      "size_mb": 1.14,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/apex-v1-extended.jsonl",
+      "orig_rows": 100
+    },
+    {
+      "dataset": "prbench",
+      "rows": 1650,
+      "size_mb": 35.39,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/prbench.jsonl",
+      "orig_rows": 1650
+    },
+    {
+      "dataset": "criticleanbench",
+      "rows": 500,
+      "size_mb": 1.91,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/criticleanbench.jsonl",
+      "orig_rows": 500
+    },
+    {
+      "dataset": "terminal-bench",
+      "rows": 66,
+      "size_mb": 0.19,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/terminal-bench.jsonl",
+      "orig_rows": 66
+    }
+  ]
+}

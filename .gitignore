@@ -99,3 +99,6 @@ target/
 *.a
 *.lib
 *.html
+.codebrains
+.codebrains-dev
+*.snapshot

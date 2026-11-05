@@ -63,6 +63,14 @@
       "skipped": {},
       "path": "/Users/guobin/tencent/datasets/src-formated/normalized/HalluQA.jsonl",
       "orig_rows": 900
+    },
+    {
+      "dataset": "fineval",
+      "rows": 170,
+      "size_mb": 0.16,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/fineval.jsonl",
+      "orig_rows": 170
     }
   ],
   "empty_answer_rows": {},
@@ -490,6 +498,59 @@
         "metadata": {
           "source": "语言模型属于人工智能。",
           "task": "open"
+        }
+      }
+    ],
+    "fineval": [
+      {
+        "question": "甲公司2×14年12月20日与乙公司签订商品销售合同。合同约定：甲公司应于2×15年5月20日前将合同标的商品运抵乙公司并经验收，在商品运抵乙公司前灭失、毁损、价值变动等风险由甲公司承担。甲公司该项合同中所售商品为库存W商品，2×14年12",
+        "answer": "会计分期",
+        "options": [
+          "会计主体",
+          "会计分期",
+          "持续经营",
+          "货币计量"
+        ],
+        "task_type": "mcq",
+        "lang": "zh",
+        "split": "dev",
+        "metadata": {
+          "subject": "accounting",
+          "answer_letter": "B"
+        }
+      },
+      {
+        "question": "20×6年1月1日，经股东大会批准，甲公司向50名高管人员每人授予1万份股票期权。根据股份支付协议规定，这些高管人员自20×6年1月1日起在甲公司连续服务3年，即可以每股5元的价格购买1万股甲公司普通股。20×6年1月1日，每份股票期权的公",
+        "answer": "225万元",
+        "options": [
+          "195万元",
+          "216.67万元",
+          "225万元",
+          "250万元"
+        ],
+        "task_type": "mcq",
+        "lang": "zh",
+        "split": "dev",
+        "metadata": {
+          "subject": "accounting",
+          "answer_letter": "C"
+        }
+      },
+      {
+        "question": "下列关于或有事项的表述中，正确的是____。",
+        "answer": "或有事项形成的预计负债是企业承担的现时义务",
+        "options": [
+          "或有事项形成的预计负债是企业承担的现时义务",
+          "预计负债应当与其相关的或有资产相抵后在资产负债表中以净额列报",
+          "或有事项形成的资产应当在很可能收到时予以确认",
+          "预计负债计量应考虑与其相关的或有资产预期处置产生的损益"
+        ],
+        "task_type": "mcq",
+        "lang": "zh",
+        "split": "dev",
+        "metadata": {
+          "subject": "accounting",
+          "answer_letter": "A"
         }
       }
     ]

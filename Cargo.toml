@@ -5,8 +5,8 @@ edition = "2024"
 rust-version = "1.91"
 authors = ["michaelbguo"]
 license = "UNLICENSED"
-description = "datasets 本地评测 CLI + lib：数据集变换 / 本地与 COS 传输 / 本机 API Key 模型评测 / 结果回流 / 看板"
-# lib 随项目一起发布；发布渠道（crates.io / 内部 registry）待定，见 docs/datasets-cli.md §11
+description = "datasets 本地评测 CLI + lib：数据集变换 / 本地与 COS 传输 / 本机 API Key 模型评测 / 结果回流"
+# lib 随项目一起发布；发布渠道（crates.io / 内部 registry）待定，见 docs/datasets-cli.md 附录 A
 publish = false
 
 [lib]
@@ -14,7 +14,7 @@ name = "datasets"
 path = "src/lib.rs"
 
 [[bin]]
-name = "datasets"
+name = "dataset"
 path = "src/main.rs"
 
 [dependencies]
@@ -63,6 +63,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
 regex = "1"
+cos-rust-sdk = "0.1.2"
 
 # SQLite（0.7 携 bundled SQLite 并 re-export rusqlite；不再单独依赖 rusqlite）
 tokio-rusqlite = { version = "0.7", features = ["bundled"] }

@@ -61,6 +61,7 @@ DATASET_SCRIPT_REGISTRY: dict[str, list[str]] = {
         "SafetyBench",
         "ChineseSimpleQA",
         "HalluQA",
+        "fineval",
     ],
     "normalize_code.py": [
         "LiveCodeBench",
@@ -79,6 +80,28 @@ DATASET_SCRIPT_REGISTRY: dict[str, list[str]] = {
         "aime-2026",
     ],
     "normalize_apex_agents.py": ["apex-agents"],
+    "normalize_science.py": [
+        "chembench",
+        "scivqr",
+        "formalmath",
+        "hipho",
+        "physics-data",
+        "ruler",
+    ],
+    "normalize_agent.py": [
+        "bfcl",
+        "apex-accounting",
+        "apex-v1-extended",
+        "prbench",
+        "criticleanbench",
+        "terminal-bench",
+    ],
+    "normalize_code_new.py": ["aider-polyglot", "scicode"],
+    "normalize_preference.py": [
+        "arena-human-preference-55k",
+        "sciarena-literature",
+        "financebench",
+    ],
 }
 
 
@@ -139,6 +162,10 @@ def resolve_normalize_scripts(selected: list[str]) -> list[str]:
         "normalize_legal.py",
         "normalize_extra.py",
         "normalize_apex_agents.py",
+        "normalize_science.py",
+        "normalize_agent.py",
+        "normalize_code_new.py",
+        "normalize_preference.py",
     ]
     if not selected:
         return default_scripts

@@ -1,0 +1,20 @@
+{
+  "per_dataset": [
+    {
+      "dataset": "aider-polyglot",
+      "rows": 225,
+      "size_mb": 0.8,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/aider-polyglot.jsonl",
+      "orig_rows": 225
+    },
+    {
+      "dataset": "scicode",
+      "rows": 80,
+      "size_mb": 1.33,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/scicode.jsonl",
+      "orig_rows": 80
+    }
+  ]
+}

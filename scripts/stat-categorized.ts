@@ -367,7 +367,9 @@ async function main(): Promise<void> {
   const totalChars = buckets.reduce((a, b) => a + b.chars, 0);
 
   const stats = {
-    generated_at: new Date().toISOString().slice(0, 16).replace("T", " "),
+    // 用本地时间，与 py/eval/stat_eval_categories.py 的 datetime.now().astimezone() 对齐；
+    // 否则合并看板里两块面板会相差一个时区偏移，看着像不同批次的数据
+    generated_at: new Date().toLocaleString("sv-SE", { hour12: false }).slice(0, 16),
     root: rootDir,
     total: {
       records: totalRecords,

@@ -1,0 +1,52 @@
+{
+  "per_dataset": [
+    {
+      "dataset": "chembench",
+      "rows": 2785,
+      "size_mb": 2.29,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/chembench.jsonl",
+      "orig_rows": 2785
+    },
+    {
+      "dataset": "scivqr",
+      "rows": 3254,
+      "size_mb": 3.24,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/scivqr.jsonl",
+      "orig_rows": 3254
+    },
+    {
+      "dataset": "formalmath",
+      "rows": 5560,
+      "size_mb": 9.02,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/formalmath.jsonl",
+      "orig_rows": 5560
+    },
+    {
+      "dataset": "hipho",
+      "rows": 403,
+      "size_mb": 1.25,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/hipho.jsonl",
+      "orig_rows": 403
+    },
+    {
+      "dataset": "physics-data",
+      "rows": 2000,
+      "size_mb": 3.37,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/physics-data.jsonl",
+      "orig_rows": 2000
+    },
+    {
+      "dataset": "ruler",
+      "rows": 19500,
+      "size_mb": 668.97,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/ruler.jsonl",
+      "orig_rows": 19500
+    }
+  ]
+}

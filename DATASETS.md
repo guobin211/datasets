@@ -1,6 +1,6 @@
 # 数据集清单与统计
 
-> 更新日期：2026-11-03。
+> 更新日期：2026-11-04。
 > 本文只登记当前工作区实际存在的数据资产；第 1 章为本地 JSONL 数据，第 2、3 章为外部数据来源清单。
 
 ## 1. 当前数据资产
@@ -29,7 +29,9 @@
 
 ### 1.2 开源原始数据
 
-目录：`src-source/open-datasets/`，gitignored。包含原始 Parquet、JSON、JSONL、压缩包及部分基准的配套源码；配套源码与真正题目数据按原目录保留，不在原始层做归一化或抽样。
+目录：`src-source/open-datasets/`，gitignored。当前 55 个目录，包含原始 Parquet、JSON、JSONL、压缩包及部分基准的配套源码；配套源码与真正题目数据按原目录保留，不在原始层做归一化或抽样。
+
+`LiveCodeBench/`、`LongBench/`、`SWE-bench/`、`ceval/` 这 4 个目录只存放配套源码与加载脚本，题目数据在同名的 `*-data/` 目录。另有 30 个目录各自对应一份 normalized 数据；2026-11-04 新补齐的 21 个目录（含 `physics/`、`superclue/`、`aider-polyglot/` 三个代码或榜单仓库）目前只到原始层，尚未生成 normalized。
 
 外部数据来源见第 2、3 章。
 
@@ -102,6 +104,7 @@ pnpm format:split
 | 数据集 | 状态 | 来源 |
 |---|---|---|
 | GSM8K | 已下载 | [HF](https://huggingface.co/datasets/openai/gsm8k) |
+| GSM1K | 已下载 | [HF](https://huggingface.co/datasets/ScaleAI/gsm1k) |
 | MultiArith | 已下载 | [HF](https://huggingface.co/datasets/ChilleD/MultiArith) |
 | MATH | 已下载 | [HF](https://huggingface.co/datasets/qwedsacf/competition_math) / [GitHub](https://github.com/hendrycks/math) |
 | MMATH | 已下载 | [GitHub](https://github.com/RUCAIBox/MMATH) |
@@ -114,8 +117,8 @@ pnpm format:split
 | GSM-Symbolic | 已下载 | [HF](https://huggingface.co/datasets/apple/GSM-Symbolic) |
 | GSM-Plus | 已下载 | [HF](https://huggingface.co/datasets/qintongli/GSM-Plus) |
 | AIME 2025 / 2026 | 已有本地数据 | 本地 `aime-2025/`、`aime-2026/` |
-| FrontierMath | 未下载 | [Epoch AI](https://epoch.ai/frontiermath) |
-| FormalMATH / CriticLeanBench | 未下载 | — |
+| FrontierMath | 未下载，需向 Epoch AI 申请 | [Epoch AI](https://epoch.ai/frontiermath) |
+| FormalMATH / CriticLeanBench | 已下载（`formalmath/`、`criticleanbench/`） | [HF](https://huggingface.co/datasets/SphereLab/FormalMATH-All) / [HF](https://huggingface.co/datasets/m-a-p/CriticLeanBench) |
 
 ### 2.2 代码与工程
 
@@ -123,37 +126,42 @@ pnpm format:split
 |---|---|---|
 | SWE-bench | 已下载 | [GitHub](https://github.com/SWE-bench/SWE-bench) / [HF](https://huggingface.co/datasets/princeton-nlp/SWE-bench) |
 | LiveCodeBench | 已下载 Lite | [GitHub](https://github.com/LiveCodeBench/LiveCodeBench) / [HF](https://huggingface.co/datasets/livecodebench/code_generation_lite) |
-| Aider Polyglot | 未下载 | — |
+| Aider Polyglot | 已下载（`aider-polyglot/`，GitHub 克隆） | [GitHub](https://github.com/Aider-AI/polyglot-benchmark) |
 
 ### 2.3 专家级复杂推理
 
 | 数据集 | 状态 | 来源 |
 |---|---|---|
-| GPQA Diamond | 未下载，HF gated | [HF](https://huggingface.co/datasets/Idavidrein/gpqa) |
-| Humanity's Last Exam | 未下载，HF gated | [HF](https://huggingface.co/datasets/cais/hle) |
+| GPQA Diamond | 未下载，HF 需人工审批 | [HF](https://huggingface.co/datasets/Idavidrein/gpqa) |
+| Humanity's Last Exam | 未下载，HF 需人工审批 | [HF](https://huggingface.co/datasets/cais/hle) |
+
+`cais_hle.jsonl`（2,500 条）等基准同名文件出现在 `src-source/third-dataset/claude-sonnet-4-6-opus-4-8-mythos-5-fable-5-openai-finetuning-dataset/` 下，是蒸馏训练副本：题目与答案已改写成 messages，不能作为对应基准的原始评测数据，也不改变上表的“未下载”状态。
 
 ### 2.4 指令遵循与对齐
 
 | 数据集 | 状态 | 来源 |
 |---|---|---|
 | IFEval | 已下载 | [HF](https://huggingface.co/datasets/google/IFEval) |
-| LMSYS Chatbot Arena | 未下载 | — |
+| LMSYS Chatbot Arena | 已下载 55k 人类偏好（`arena-human-preference-55k/`） | [HF](https://huggingface.co/datasets/lmarena-ai/arena-human-preference-55k) |
 
 ### 2.5 Agent 与工具调用
 
 | 数据集 | 状态 | 来源 |
 |---|---|---|
-| APEX-Agents | 已下载元数据与任务文件，HF gated | [HF](https://huggingface.co/datasets/mercor/apex-agents) |
-| BFCL | 未下载 | [HF](https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard) / [GitHub](https://github.com/ShishirPatil/gorilla) |
-| Terminal-Bench / OSWorld | 未下载 | [Terminal-Bench](https://huggingface.co/datasets/harborframework/terminal-bench) / [OSWorld](https://huggingface.co/datasets/xlangai/osworld_v2_assets) |
+| APEX-Agents | 部分下载：480 条任务与 rubric 齐全，任务环境 141/480，HF gated | [HF](https://huggingface.co/datasets/mercor/apex-agents) |
+| BFCL | 已下载（`bfcl/`） | [HF](https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard) / [GitHub](https://github.com/ShishirPatil/gorilla) |
+| Terminal-Bench | 已下载（`terminal-bench/`） | [HF](https://huggingface.co/datasets/harborframework/terminal-bench) |
+| OSWorld | 部分下载：v2 assets 已下，任务定义需人工审批 | [HF](https://huggingface.co/datasets/xlangai/osworld_v2_assets) / [GitHub](https://github.com/xlangai/OSWorld) |
+
+同一 third-dataset 目录下的 `terminal-bench-2.jsonl`、`terminal-bench-2-verified.jsonl`、`swe-bench-pro.jsonl` 同样是蒸馏副本，不代表这些基准已下载。
 
 ### 2.6 长文本与检索
 
 | 数据集 | 状态 | 来源 |
 |---|---|---|
 | LongBench | 已下载 | [GitHub](https://github.com/THUDM/LongBench) / [HF](https://huggingface.co/datasets/THUDM/LongBench) |
-| RULER | 未下载 | — |
-| Needle In A Haystack | 未下载 | — |
+| RULER | 已下载 4k/8k/16k 三档（`ruler/`） | [HF](https://huggingface.co/datasets/simonjegou/ruler) / [GitHub](https://github.com/NVIDIA/RULER) |
+| Needle In A Haystack | 未下载，无固定数据集，需按长度自行生成 | — |
 
 ### 2.7 中文与本土综合
 
@@ -166,17 +174,19 @@ pnpm format:split
 | SafetyBench | 已下载 | [GitHub](https://github.com/thu-coai/SafetyBench) / [HF](https://huggingface.co/datasets/thu-coai/SafetyBench) |
 | Chinese-SimpleQA | 已下载 | [GitHub](https://github.com/OpenStellarTeam/ChineseSimpleQA) / [HF](https://huggingface.co/datasets/OpenStellarTeam/Chinese-SimpleQA) |
 | HalluQA | 已下载 | [GitHub](https://github.com/OpenMOSS/HalluQA) |
-| SuperCLUE | 未下载 | — |
+| SuperCLUE | 未下载，仅公开榜单与报告，无题目数据（`superclue/` 为榜单仓库） | [GitHub](https://github.com/CLUEbenchmark/SuperCLUE) |
 
 ### 2.8 科学 / AI for Science
 
 | 数据集 | 状态 | 来源 |
 |---|---|---|
-| ScienceArena | 未下载 | — |
-| SciCode | 未下载 | — |
-| SciVQR | 未下载 | — |
-| PhyArena / HiPhO | 未下载 | — |
-| ChemBench | 未下载 | — |
+| ScienceArena | 未下载，题目未公开（论文仅提供 demo） | [arXiv](https://arxiv.org/abs/2608.30517) / [demo](https://science-arena.onrender.com/) |
+| SciCode | 已下载（`scicode/`，65 test + 15 dev） | [HF](https://huggingface.co/datasets/SciCode1/SciCode) / [GitHub](https://github.com/SciCode1/SciCode) |
+| SciVQR | 已下载（`scivqr/`，五学科 parquet） | [HF](https://huggingface.co/datasets/CASIA-IVA-Lab/SciVQR) |
+| PhyArena / HiPhO | 已下载（`hipho/` 14 份赛事 JSON、`physics-data/` PHYSICS test） | [HF](https://huggingface.co/datasets/SciYu/HiPhO) / [HF](https://huggingface.co/datasets/desimfj/PHYSICS) / [官网](https://phyarena.github.io/) |
+| ChemBench | 已下载（`chembench/`，9 个学科子集） | [HF](https://huggingface.co/datasets/jablonkagroup/ChemBench) |
+
+注意：`yale-nlp/SciArena` 是“科学文献竞技场”，与这里的 ScienceArena 只是同名，不是同一基准；它已单独下载到 `sciarena-literature/`，不计入上表 ScienceArena 的状态。
 
 ### 2.9 专业服务
 
@@ -185,34 +195,44 @@ pnpm format:split
 | LegalBench | 已下载 | [HF](https://huggingface.co/datasets/nguha/legalbench) / [GitHub](https://github.com/HazyResearch/legalbench) |
 | CUAD | 已下载 | [HF](https://huggingface.co/datasets/theatticusproject/cuad) / [官网](https://www.atticusproject.org/cuad/) |
 | LawBench | 已下载 | [HF](https://huggingface.co/datasets/doolayer/LawBench) / [GitHub](https://github.com/open-compass/LawBench) |
-| APEX-v1-extended | 未下载 | [HF](https://huggingface.co/datasets/mercor/APEX-v1-extended) |
-| PRBench | 未下载 | [HF](https://huggingface.co/datasets/ScaleAI/PRBench) |
-| apex-accounting | 未下载 | [HF](https://huggingface.co/datasets/mercor/apex-accounting) |
-| FinanceBench | 未下载 | [HF](https://huggingface.co/datasets/PatronusAI/financebench) |
-| FinEval | 未下载 | [HF](https://huggingface.co/datasets/SUFE-AIFLM-Lab/FinEval) / [GitHub](https://github.com/SUFE-AIFLM-Lab/FinEval) |
+| APEX-v1-extended | 已下载（`apex-v1-extended/`） | [HF](https://huggingface.co/datasets/mercor/APEX-v1-extended) |
+| PRBench | 已下载（`prbench/`） | [HF](https://huggingface.co/datasets/ScaleAI/PRBench) |
+| apex-accounting | 已下载（`apex-accounting/`） | [HF](https://huggingface.co/datasets/mercor/apex-accounting-harbor) |
+| FinanceBench | 已下载（`financebench/`） | [HF](https://huggingface.co/datasets/PatronusAI/financebench) |
+| FinEval | 已下载（`fineval/`，zip 未解压） | [HF](https://huggingface.co/datasets/SUFE-AIFLM-Lab/FinEval) / [GitHub](https://github.com/SUFE-AIFLM-Lab/FinEval) |
+
+2026-11-04 补齐 21 个目录（18 个数据目录 + 3 个代码/榜单仓库），全部位于 `src-source/open-datasets/<name>/`，下载方式统一为：
+
+```bash
+hf download <repo> --repo-type dataset --local-dir src-source/open-datasets/<name>
+```
+
+批量脚本见 `.agents/cache/download-missing-eval.sh`（gitignored）。仍缺的 8 项都不是“忘记下”：GPQA、HLE、APEX-Agents 剩余任务环境、OSWorld 任务定义的 HF 仓库需要人工审批；FrontierMath 需要向 Epoch AI 申请；SuperCLUE 只公开榜单没有题目；ScienceArena 题目未公开；NIAH 要按长度自行生成考题。
 
 ---
 
 ## 3. 外部训练数据集来源
 
-以下数据集当前均未下载到 `src-source/open-datasets/`。
+以下数据集当前均未下载到 `src-source/open-datasets/`。2026-11-04 已核实可下载来源与体积，按确认本轮只补评测基准、训练集暂不下载：4 个有明确 HF 来源的合计约 261 GB，而补完评测基准后磁盘剩余约 115 GB。
 
-| 类别 | 数据集 | 来源 |
-|---|---|---|
-| 数学推理 | Nemotron-Math-v2 / OpenMathInstruct-2 | — |
-| 数学推理 | NaturalReasoning | [arXiv](https://arxiv.org/html/2502.13124) |
-| 数学推理 | AM-DeepSeek-R1-Distilled | [arXiv](https://arxiv.org/html/2503.19633v1) |
-| 科学 | ORD / USPTO 更新集 | — |
-| 科学 | Open-MM-RL（名称待核实） | — |
-| 科学 | NVIDIA Modulus 仿真集 | — |
-| 科学 | AlphaFold 3 / PDB-multimer / BioNeMo | — |
-| 科学 | CZ CELLxGENE | — |
+| 类别 | 数据集 | 约体积 | 来源 |
+|---|---|---|---|
+| 数学推理 | Nemotron-Math-v2 | 205 GB | [HF](https://huggingface.co/datasets/nvidia/Nemotron-Math-v2) |
+| 数学推理 | OpenMathInstruct-2 | 12.6 GB | [HF](https://huggingface.co/datasets/nvidia/OpenMathInstruct-2) |
+| 数学推理 | NaturalReasoning | 4.2 GB | [HF](https://huggingface.co/datasets/facebook/natural_reasoning) |
+| 数学推理 | AM-DeepSeek-R1-Distilled | 39.6 GB | [HF](https://huggingface.co/datasets/a-m-team/AM-DeepSeek-R1-Distilled-1.4M) |
+| 科学 | ORD / USPTO 更新集 | — | — |
+| 科学 | Open-MM-RL（名称待核实） | — | — |
+| 科学 | NVIDIA Modulus 仿真集 | — | — |
+| 科学 | AlphaFold 3 / PDB-multimer / BioNeMo | — | — |
+| 科学 | CZ CELLxGENE | TB 级 | [官网](https://cellxgene.cziscience.com/) |
 
 ---
 
 ## 4. 统计口径
 
-- 第 1 章统计于 2026-11-03，直接扫描当前工作区；体积采用文件字节数或近似人类可读单位。
+- 第 1 章统计于 2026-11-04，直接扫描当前工作区；体积采用文件字节数或近似人类可读单位。
+- 第 2 章 2026-11-04 补下载的 18 个数据目录只到原始层，尚未纳入 normalized / split / sampling 统计，第 1 章的 30 份 normalized 仍是全部已归一化数据。
 - 分类桶的有效记录数取自 `.agents/cache/categorized-stats.json`，不把物理坏行计为有效记录。
 - split 已于 2026-11-03 按全部 normalized 重跑；unlabeled 默认不落盘，因此落盘文件数不等于 normalized 文件数。
 - 第 2、3 章只提供来源与下载状态，不代表对应数据均已完成 normalized、split 或 sampling。

@@ -3,9 +3,11 @@
 
 import ast
 import csv
+import io
 import json
 import os
 import re
+import zipfile
 from pathlib import Path
 
 from _norm_common import OPEN, JsonlWriter, load_json_array, make_record
@@ -610,6 +612,55 @@ def norm_hallu():
     return res
 
 
+# ---------------------------------------------------------------- 9. fineval
+def norm_fineval():
+    """FinEval 中文金融 mcq：dev 目录带 answer/explanation，test 无答案，故只归一化 dev。"""
+    ds = "fineval"
+    zip_path = OPEN / ds / "FinEval.zip"
+    w = JsonlWriter(ds)
+    orig = 0
+    letters = ["A", "B", "C", "D"]
+    with zipfile.ZipFile(zip_path) as zf:
+        names = sorted(n for n in zf.namelist() if n.startswith("dev/") and n.endswith(".csv"))
+        for name in names:
+            subject = Path(name).stem.replace("_dev", "")
+            with zf.open(name) as bf:
+                reader = csv.DictReader(io.TextIOWrapper(bf, encoding="utf-8"))
+                for row in reader:
+                    orig += 1
+                    q = row.get("question")
+                    if not q:
+                        w.skip("fineval_empty_question")
+                        continue
+                    options = [row.get(L, "") for L in letters]
+                    if not any(options):
+                        w.skip("fineval_no_options")
+                        continue
+                    ans_letter = (row.get("answer") or "").strip()
+                    ans_text = row.get(ans_letter, "") if ans_letter in letters else ""
+                    rec = make_record(
+                        ds,
+                        "chinese",
+                        "mcq",
+                        q,
+                        ans_text,
+                        options=options,
+                        solution=row.get("explanation", ""),
+                        lang="zh",
+                        split="dev",
+                        source_file=f"fineval/FinEval.zip!{name}",
+                        orig_id=str(row.get("\ufeffid", "")),
+                        metadata={"subject": subject, "answer_letter": ans_letter},
+                    )
+                    w.write(rec)
+                    bump_empty(ds, rec)
+                    record_sample(ds, rec)
+    res = w.close()
+    res["orig_rows"] = orig
+    stats.append(res)
+    return res
+
+
 if __name__ == "__main__":
     for fn in (
         norm_ceval,
@@ -620,6 +671,7 @@ if __name__ == "__main__":
         norm_safety,
         norm_simpleqa,
         norm_hallu,
+        norm_fineval,
     ):
         try:
             r = fn()

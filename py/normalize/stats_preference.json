@@ -1,0 +1,28 @@
+{
+  "per_dataset": [
+    {
+      "dataset": "arena-human-preference-55k",
+      "rows": 57477,
+      "size_mb": 208.57,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/arena-human-preference-55k.jsonl",
+      "orig_rows": 57477
+    },
+    {
+      "dataset": "sciarena-literature",
+      "rows": 13204,
+      "size_mb": 439.11,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/sciarena-literature.jsonl",
+      "orig_rows": 13204
+    },
+    {
+      "dataset": "financebench",
+      "rows": 150,
+      "size_mb": 0.93,
+      "skipped": {},
+      "path": "/Users/guobin/tencent/datasets/src-formated/normalized/financebench.jsonl",
+      "orig_rows": 150
+    }
+  ]
+}

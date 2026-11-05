@@ -16,6 +16,7 @@ datasets 是 LLM 数据集处理工具集：将多来源、多格式数据整理
 | `src-formated/split/` | 保持相同 schema 的语种拆分 JSONL | gitignored |
 | `src-sampling/categorized/` | 四个会话分类桶，按 `<category>/<source>.jsonl` 组织 | Git LFS |
 | `src-sampling/translation/` | 翻译队列与翻译抽样 JSONL | gitignored |
+| `src-sampling/csv/` | 构建出的成品评测 CSV（`eval-formal.csv` 等） | gitignored |
 | `scripts/` | TypeScript 数据流水线与统计脚本 | 源码入库 |
 | `py/` | Python 归一化、翻译与评测脚本 | 源码入库 |
 | `src/` | Rust 本地评测 CLI | 源码入库 |
@@ -23,7 +24,7 @@ datasets 是 LLM 数据集处理工具集：将多来源、多格式数据整理
 | `html/` | 生成的看板与共用静态资源 | 看板 gitignored |
 | `.agents/cache/` | 临时脚本与统计缓存 | gitignored |
 
-**边界要求**：原始数据只进 `src-source/`；统一 schema 的格式化 JSONL 只进 `src-formated/`；分类与抽样 JSONL 只进 `src-sampling/`。目录名固定使用 `src-formated`，不要改成 `src-formatted`。
+**边界要求**：原始数据只进 `src-source/`；统一 schema 的格式化 JSONL 只进 `src-formated/`；分类、抽样与成品 CSV 只进 `src-sampling/`。目录名固定使用 `src-formated`，不要改成 `src-formatted`。
 
 ## 标准 schema
 
@@ -125,8 +126,20 @@ uv run python py/main.py pipeline --dry-run --root src-source/open-datasets
 # 翻译队列
 uv run python py/translate/extract_foreign.py
 
+# 评测集 CSV（成品，输出到 src-sampling/csv/）
+uv run python py/eval/build_formal_eval_csv.py --out src-sampling/csv/eval-formal.csv
+uv run python py/eval/build_simple_eval_csv.py --out src-sampling/csv/eval-simple-1000.csv --supplement 750
+
 # 分类统计
 npx tsx scripts/stat-categorized.ts
+
+# 评测集分类统计（依赖上面的两份 CSV）
+uv run python py/eval/stat_eval_categories.py \
+  --formal src-sampling/csv/eval-formal.csv \
+  --simple src-sampling/csv/eval-simple-1000.csv
+
+# 合并统计看板 html/dataset-stats.html（训练数据 + 开源评测集两个 Tab）
+npx tsx scripts/stat-dashboard.ts
 
 # 抽样（参数直接跟在 pnpm sample 后，不额外加 --）
 pnpm sample src-formated/normalized/PolyMath.jsonl \
@@ -148,29 +161,42 @@ cargo check
 
 当前分类产物为 73 份 JSONL；`question` 是派生副本，计算真实微调配比时不计入分母。
 
+## 统计看板
+
+`scripts/stat-dashboard.ts` 把两块互不相干的统计合并成一份 `html/dataset-stats.html`，用 Tab 切换：
+
+| Tab | 上游统计脚本 | 中间 JSON |
+|---|---|---|
+| 训练数据 | `scripts/stat-categorized.ts` | `.agents/cache/categorized-stats.json` |
+| 开源评测集 | `py/eval/stat_eval_categories.py` | `.agents/cache/eval-category-stats.json` |
+
+看板脚本自己不做统计，只读两份 JSON 拼 HTML；改统计口径请改上游脚本。数据集更新后按上表顺序重跑上游统计，再重建看板即可。
+
+`html/eval-question-classify.html` 是 2026-10-08 一次性的模型分类评测结果，无生成脚本，不随数据集更新重跑。
+
 ## Rust 本地 CLI
 
 完整技术方案见 `docs/datasets-cli.md`。CLI 只负责本地数据准备、评测与结果流转，不承担 messages 分桶。
 
 ```bash
-# 探查源字段
-datasets dataset inspect src-formated/normalized/PolyMath.jsonl
+# 登记与导出（命令面以 docs/datasets-cli.md §9 为准）
+dataset add src-formated/normalized/PolyMath.jsonl --name polymath --tag math
+dataset export ds_1a2b3c --filter "lang = 'zh'" --sample 1000 --seed 42 \
+  --output src-sampling/eval/poly-math-zh-1k.jsonl
 
-# 筛选并抽样，抽样 JSONL 放入 src-sampling/（也可直接使用 datasets dataset prepare）
-pnpm sample src-formated/normalized/PolyMath.jsonl \
-  --where "lang = 'zh'" --sample 1000 --sample-by category --seed 42 --dedupe \
-  --keep lang,category --out src-sampling/eval/poly-math-zh-1k.jsonl
+# 本地评测（行 × 执行者并发，宽表 JSONL 追加列）
+dataset run --data src-sampling/eval/poly-math-zh-1k.jsonl \
+  --model claude-opus-4-8,gpt-5-5 --output out/run.jsonl --wait
 
-# 本地评测与结果汇总（CSV 为临时运行产物）
-datasets eval run --input src-sampling/eval/poly-math-zh-1k.jsonl \
-  --models opus-4-8,gpt-5-5 --out out/eval-wide.csv
-datasets eval collect out/eval-wide.csv
+# 服务与任务管理
+dataset status
+dataset task show <task_id>
 ```
 
-- `dataset prepare` 自动把 `question/prompt/instruction/query/input/text` 中首个命中列映射为规范列 `question`。
-- `--sample` 支持条数与比例，`--sample-by` 做分层抽样，相同 `--seed` 可复现。
+- 问题列按 `question/prompt/instruction/query/input/text` 顺序自动探测，探测不到报错并列出可用列。
+- `--sample` 支持条数与比例，相同 `--seed` 可复现；`--filter` 仅支持扁平 AND 条件。
 - 模型别名字段名使用下划线，例如 `opus-4.6` → `answer_opus_4_6`。
-- 凭据配置只保存 env 变量名，不保存明文密钥。
+- 凭据配置只保存 env 变量名（含 HTTP token），不保存明文密钥。
 
 ## 代码规范
 
