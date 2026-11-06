@@ -6,7 +6,7 @@
 |---|---|
 | [cli.md](cli.md) | **本地评测程序 `dataset`（Rust）**的技术方案：架构分层、配置、数据集来源、评测执行模型、命令面、错误码契约 |
 | [athlete-design.md](athlete-design.md) | **运动员 / Athlete** 设计说明：模型与 agent 的执行流程、输出列、失败隔离、并发控制与指标口径 |
-| [data-model.md](data-model.md) | **数据模型 / SQLite** 设计说明：表结构、任务状态机、迁移策略、并发写口径与软删除语义 |
+| [data-model-design.md](data-model-design.md) | **数据模型 / SQLite** 设计说明：表结构、任务状态机、迁移策略、并发写口径与软删除语义 |
 | [referee-design.md](referee-design.md) | **裁判员 / Referee** 设计说明：评分入口、配置模型、评分口径、LLM / 脚本算子、安全边界与可追溯性 |
 | [script-design.md](script-design.md) | **脚本**设计说明：数据筛选脚本与裁判员脚本的 JS 格式、类型定义、Node 运行时、受限启动器、JSON-RPC 协议与错误码 |
 | [dataset-platform/](dataset-platform/README.md) | **本项目自己的**数据平台技术方案（对象存储、数据服务、上传入库、后端架构、成本许可） |
@@ -17,7 +17,7 @@
 | 目标 | 优先阅读 |
 |---|---|
 | 用 `dataset` 跑一次本地评测 | [cli.md](cli.md) §9 命令面 |
-| 了解数据模型 / SQLite | [data-model.md](data-model.md) |
+| 了解数据模型 / SQLite | [data-model-design.md](data-model-design.md) |
 | 了解运动员 / Athlete 设计 | [athlete-design.md](athlete-design.md) |
 | 了解裁判员 / Referee 设计 | [referee-design.md](referee-design.md) |
 | 编写数据筛选脚本或裁判员脚本 | [script-design.md](script-design.md) |

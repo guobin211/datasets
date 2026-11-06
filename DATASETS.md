@@ -1,6 +1,6 @@
 # 数据集清单与统计
 
-> 更新日期：2026-11-04。
+> 更新日期：2026-11-06。
 > 本文只登记当前工作区实际存在的数据资产；第 1 章为本地 JSONL 数据，第 2、3 章为外部数据来源清单。
 
 ## 1. 当前数据资产
@@ -31,7 +31,7 @@
 
 目录：`src-source/open-datasets/`，gitignored。当前 55 个目录，包含原始 Parquet、JSON、JSONL、压缩包及部分基准的配套源码；配套源码与真正题目数据按原目录保留，不在原始层做归一化或抽样。
 
-`LiveCodeBench/`、`LongBench/`、`SWE-bench/`、`ceval/` 这 4 个目录只存放配套源码与加载脚本，题目数据在同名的 `*-data/` 目录。另有 30 个目录各自对应一份 normalized 数据；2026-11-04 新补齐的 21 个目录（含 `physics/`、`superclue/`、`aider-polyglot/` 三个代码或榜单仓库）目前只到原始层，尚未生成 normalized。
+`LiveCodeBench/`、`LongBench/`、`SWE-bench/`、`ceval/` 这 4 个目录只存放配套源码与加载脚本，题目数据在同名的 `*-data/` 目录；`physics/` 是 PHYSICS 的代码仓库，题目数据在 `physics-data/`。截至 2026-11-06，48 个目录已生成 normalized；其余 7 个目录里，`osworld_v2_assets/` 只有任务资源、`superclue/` 只有榜单与报告，均无题目数据可归一化。
 
 外部数据来源见第 2、3 章。
 
@@ -41,7 +41,7 @@
 
 | 文件数 | 记录数 | 字节数 | 说明 |
 |---:|---:|---:|---|
-| 30 | 421,579 | 2,968,694,309 | 每个数据集一个 `<dataset>.jsonl` |
+| 48 | 533,964 | 4,423,641,939 | 每个数据集一个 `<dataset>.jsonl` |
 
 每行必须完整包含以下 13 个字段：
 
@@ -56,13 +56,13 @@ options, solution, source_file, orig_id, metadata
 
 | 子目录 | 落盘文件数 | 落盘记录数 | 约体积 | 说明 |
 |---|---:|---:|---:|---|
-| `zh-en/` | 28 | 364,407 | 1.22 GB | 中英文数据 |
+| `zh-en/` | 45 | 468,374 | 2.3 GB | 中英文数据 |
 | `other-lang/` | 3 | 35,245 | 50.6 MB | 非中英数据，翻译来源 |
-| `unlabeled/` | 0 | 0 | 0 | 另有 21,927 条仅统计、不落盘 |
+| `unlabeled/` | 0 | 0 | 0 | 另有 30,345 条仅统计、不落盘 |
 
-2026-11-03 已按全部 30 份 normalized 重跑拆分：421,579 = 364,407 + 35,245 + 21,927。
-`livecodebench-data` 与 `swe-bench-data` 的 `lang` 为空，默认只计入 unlabeled 统计，因此不落盘；
-其余 28 个数据集均已覆盖。后续同步只需运行：
+2026-11-04 已按全部 48 份 normalized 重跑拆分：533,964 = 468,374 + 35,245 + 30,345。
+`livecodebench-data`、`longbench-data` 与 `swe-bench-data` 的 `lang` 为空，默认只计入 unlabeled 统计，因此不落盘；
+其余 45 个数据集均已覆盖。后续同步只需运行：
 
 ```bash
 pnpm format:split
@@ -70,18 +70,18 @@ pnpm format:split
 
 ### 1.5 会话分类数据
 
-目录：`src-sampling/categorized/`，73 份 JSONL，573,447 条有效记录，约 1.58 GiB，按现有策略使用 Git LFS 跟踪。
+目录：`src-sampling/categorized/`，73 份 JSONL，573,449 条有效记录，约 1.58 GiB，按现有策略使用 Git LFS 跟踪。
 
 | 分类桶 | 文件数 | 有效记录数 | 约体积 | 规则 |
 |---|---:|---:|---:|---|
-| `question/` | 29 | 286,723 | 152.7 MB | 每条会话的真实用户提问副本 |
+| `question/` | 29 | 286,725 | 152.7 MB | 每条会话的真实用户提问副本 |
 | `question-answer/` | 15 | 261,934 | 1.09 GB | 单轮、无工具调用 |
 | `question-multi/` | 21 | 19,829 | 293.1 MB | 真实用户轮次 ≥ 2 |
 | `question-answer-tool-call/` | 8 | 4,961 | 55.5 MB | 单轮、包含工具调用 |
 
 记录结构为 `{ messages, source_file, line, category }`。`question` 是派生桶，计算真实微调配比时只使用另外三个桶。
 
-已知历史产物中 `question/claude-sonnet-4-6-opus-4-8-mythos-5-fable-5-openai-finetuning-dataset.jsonl` 有 8 个物理坏行；重跑该来源分类可消除。
+此前记录的 `question/claude-sonnet-4-6-opus-4-8-mythos-5-fable-5-openai-finetuning-dataset.jsonl` 物理坏行已复核消除：该文件 29,706 行全部可解析，统计缓存 `bad_lines` 为 0。
 
 ### 1.6 翻译队列与抽样
 
@@ -231,9 +231,9 @@ hf download <repo> --repo-type dataset --local-dir src-source/open-datasets/<nam
 
 ## 4. 统计口径
 
-- 第 1 章统计于 2026-11-04，直接扫描当前工作区；体积采用文件字节数或近似人类可读单位。
-- 第 2 章 2026-11-04 补下载的 18 个数据目录只到原始层，尚未纳入 normalized / split / sampling 统计，第 1 章的 30 份 normalized 仍是全部已归一化数据。
+- 第 1 章统计于 2026-11-06，直接扫描当前工作区；体积采用文件字节数或近似人类可读单位。
+- 第 2 章 2026-11-04 补下载的 18 个数据目录已于 2026-11-04 完成 normalized 与 split；第 1 章的 48 份 normalized 是全部已归一化数据。`osworld_v2_assets/` 与 `superclue/` 无题目数据，不参与归一化。
 - 分类桶的有效记录数取自 `.agents/cache/categorized-stats.json`，不把物理坏行计为有效记录。
-- split 已于 2026-11-03 按全部 normalized 重跑；unlabeled 默认不落盘，因此落盘文件数不等于 normalized 文件数。
+- split 已于 2026-11-04 按全部 48 份 normalized 重跑；unlabeled 默认不落盘，因此落盘文件数不等于 normalized 文件数。
 - 第 2、3 章只提供来源与下载状态，不代表对应数据均已完成 normalized、split 或 sampling。
 - 原始数据、格式化数据和分类/抽样数据分别以 `src-source/`、`src-formated/`、`src-sampling/` 为唯一归属目录。

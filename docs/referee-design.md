@@ -50,14 +50,14 @@
    ├─ _shared/                     公共 .js 模块
    ├─ simple-qa/
    │  ├─ referee.toml
-   │  ├─ prompt.md
-   │  ├─ system.md
+   │  ├─ referee_prompt.md
+   │  ├─ referee_system.md
    │  ├─ few_shot.jsonl
    │  └─ README.md
    └─ math-exact/
       ├─ referee.toml
       ├─ referee.js
-      └─ prompt.md
+      └─ referee_prompt.md
 ```
 
 要求：
@@ -80,7 +80,9 @@ version = "1.0.0"
 [input]
 reference_field = "reference"
 candidate_pattern = '^answer[_-](?P<athlete>.+)$'
-reasoning_field = "reasoning_{athlete}"
+reasoning_field = "reasoning_{{athlete}}"
+tool_calls_field = "tool_calls_{{athlete}}"   # 可选：被评运动员的工具调用列
+tools_field = "metadata.tools"               # 可选：提供给运动员的工具定义列
 
 [llm]
 model = "deepseek-v4-pro"
@@ -101,19 +103,22 @@ pass_mode = "threshold"
 pass_threshold = 6
 
 [output]
-score_field = "score_{referee}_{athlete}"
-pass_field = "pass_{referee}_{athlete}"
-comment_field = "comment_{referee}_{athlete}"
-dims_field = "dims_{referee}_{athlete}"
-error_field = "referee_error_{referee}_{athlete}"
+score_field = "score_{{referee}}_{{athlete}}"
+pass_field = "pass_{{referee}}_{{athlete}}"
+comment_field = "comment_{{referee}}_{{athlete}}"
+dims_field = "dims_{{referee}}_{{athlete}}"
+prompt_tokens_field = "referee_prompt_tokens_{{referee}}_{{athlete}}"
+completion_tokens_field = "referee_completion_tokens_{{referee}}_{{athlete}}"
+total_tokens_field = "referee_total_tokens_{{referee}}_{{athlete}}"
+error_field = "referee_error_{{referee}}_{{athlete}}"
 ```
 
 ### 4.1 关键配置项
 
-- `[input]`: 读取数据列：`question_field`、`reference_field`、`context_field`、`candidate_pattern`、`reasoning_field`
+- `[input]`: 读取数据列：`question_field`、`reference_field`、`context_field`、`candidate_pattern`、`reasoning_field`、`tool_calls_field`、`tools_field`；除 `candidate_pattern` 外均可选，未配置时对应模板变量为空串（[cli.md §3.4](./cli.md#34-模板变量)）。用户按需在 `referee_prompt.md` 中引用要评测的变量
 - `[llm]`: 裁判模型、采样温度、超时、重试次数、`response_format`
 - `[score]`: 分值范围、维度、权重、及格门槛、分带
-- `[output]`: 输出列模板，必须包含 `{referee}`，以避免多个裁判员覆盖同名列
+- `[output]`: 输出列模板，必须包含 `{{referee}}`，以避免多个裁判员覆盖同名列
 - `[params]`: 自定义参数，原样传递给脚本
 - `[script]`: 仅 `operator = "script"` 时生效：进程数、单进程并发、超时、堆上限、熔断阈值、可用模型、透传 env，见 [script-design.md §4.2](./script-design.md#42-script-配置)
 
@@ -125,8 +130,8 @@ error_field = "referee_error_{referee}_{athlete}"
 - `pass_threshold` 必须位于 `[min, max]` 区间
 - `weights` 键必须与 `dimensions` 一致
 - `samples >= 1`
-- `output` 模板必须含 `{referee}` 且渲染后列名唯一
-- `operator = "llm"` 时必须配置 `model` 和 `prompt.md`
+- `output` 模板必须含 `{{referee}}` 且渲染后列名唯一
+- `operator = "llm"` 时必须配置 `model` 和 `referee_prompt.md`
 - `operator = "script"` 时必须存在 `referee.js`，`[script]` 段与符号链接的校验规则见 [script-design.md §4.2](./script-design.md#42-script-配置)
 
 ## 5. 评分口径
@@ -166,7 +171,7 @@ error_field = "referee_error_{referee}_{athlete}"
 
 ### 5.4 跳过与失败
 
-- 候选答案为空串、缺失，或者对应 `error_<athlete>` 非空时：跳过该格子，不计入失败
+- 候选答案与工具调用（配置了 `tool_calls_field` 时）**都**为空串或缺失，或者对应 `error_<athlete>` 非空时：跳过该格子，不计入失败。只调用了工具、没有文本回答的运动员会正常评分
 - 脚本层抛异常 -> 该格子判失败，写 `referee_error_<referee>_<athlete>`
 - 失败只记入本裁判列，不写入运动员的 `error_<slug>`
 
@@ -183,24 +188,29 @@ error_field = "referee_error_{referee}_{athlete}"
 
 `llm` 算子为纯配置型评测器：
 
-- `system.md` 作为 system prompt（可选）
-- `prompt.md` 作为 user prompt（必需）
-- `{criteria}`、`{steps}`、`{bands}`、`{examples}` 由配置自动渲染
+- `referee_prompt.md` 作为 user prompt（必需）
+- `referee_system.md` 作为 system prompt（可选）
+- 裁判员目录内的文件名一律使用英文（小写字母、数字、下划线），不使用中文文件名
+- 模板为 Handlebars 语法（`{{var}}`，不转义、严格模式，见 [cli.md §3.4](./cli.md#34-模板变量)）；`{{criteria}}`、`{{steps}}`、`{{bands}}`、`{{examples}}` 由配置自动渲染
 - `response_format` 支持：
   - `json_schema`: 优先用结构化输出
   - `json_object`: 降级
   - `prompt`: 最后兜底
 
-示例 `prompt.md`：
+示例 `referee_prompt.md`：
 
 ```markdown
-问题：{question}
-参考答案：{reference}
-候选答案：{answer}
-思维链：{reasoning}
-评分标准：{criteria}
-分带：{bands}
+问题：{{question}}
+参考答案：{{reference}}
+候选答案：{{answer}}
+思维链：{{reasoning}}
+可用工具：{{tools}}
+工具调用：{{tool_calls}}
+评分标准：{{criteria}}
+分带：{{bands}}
 ```
+
+模板变量都是可选的：示例列出了常用变量，只评文本答案时删掉「可用工具」「工具调用」两行即可；未配置的列对应变量渲染为空串，不会报错。
 
 ## 7. `script` 算子
 
@@ -216,7 +226,7 @@ error_field = "referee_error_{referee}_{athlete}"
 ## 8. 安全边界
 
 - 只加载 app 目录 `referee/` 下的裁判员，路径先 canonicalize 后判断
-- HTTP / MCP 只能按名称选择已有裁判员，不能创建或修改裁判员目录
+- MCP 只能按名称选择已有裁判员，不能创建或修改裁判员目录
 - `llm` 算子的模型请求由宿主直接发出，API Key 只在宿主内存中使用
 - `script` 算子经受限启动器运行：拿不到 API Key，只能读必要目录，不能写文件、起子进程，详见 [script-design.md §4.9](./script-design.md#49-安全边界)
 
@@ -225,7 +235,7 @@ error_field = "referee_error_{referee}_{athlete}"
 - 每次任务在提交时读取并校验裁判员目录，不在 daemon 启动时缓存
 - 修改裁判员目录对下一次任务立即生效
 - 记录 `runs.referees`：`{name, version, hash, toml, prompt}`
-- `hash` 为裁判员目录及 `_shared/` 内相关文件的 sha256 摘要，用于追溯当前任务使用的代码与配置版本
+- `hash` 为裁判员目录及 `_shared/` 内全部文件的 sha256 摘要（`script` 算子且 `dependencies` 非空时另拼入 install hash，见 [script-design.md §4.1](./script-design.md#41-职责与文件)），用于追溯当前任务使用的代码、配置与依赖版本
 - `task retry` 使用当前裁判员目录重新执行；如果 hash 变化，输出 warn，提示结果可能不可比
 
 ## 10. 输出列命名
@@ -236,6 +246,9 @@ error_field = "referee_error_{referee}_{athlete}"
 - `pass_<referee>_<athlete>`
 - `comment_<referee>_<athlete>`
 - `dims_<referee>_<athlete>`
+- `referee_prompt_tokens_<referee>_<athlete>`
+- `referee_completion_tokens_<referee>_<athlete>`
+- `referee_total_tokens_<referee>_<athlete>`
 - `referee_error_<referee>_<athlete>`
 
 其中：
@@ -243,6 +256,8 @@ error_field = "referee_error_{referee}_{athlete}"
 - `<referee>` = 裁判员名经过 `toFieldSlug`
 - `<athlete>` = 运动员名经过 `toFieldSlug`
 - `referee_error_*` 为总失败兜底字段，成功时为空串
+- `referee_*_tokens_*` 记录该格子裁判模型的 token，以接口返回的 `usage` 为准（`total_tokens` 取接口值）：每次模型请求只取**最后一次成功尝试**，重试前失败的尝试不计；`llm` 算子多次采样（`samples`）或 `script` 算子多次调用 `ctx.llm()` 时，按各次成功请求相加。评分失败与被跳过的格子（§5.4）写空串，与评分列一致；已执行但未调用模型的 `script` 格子写 0。
+- 取值类型：`score_*` 为数字、`pass_*` 为布尔、`dims_*` 为 JSON 对象（键为维度名、值为数字，未配置维度时为空串）、`comment_*` / `referee_error_*` 为字符串，无值时一律空串；完整示例见 [athlete-design.md §6.6](./athlete-design.md#66-输出示例)。裁判员不计算费用，费用由统计人员按表格的 token 列换算
 
 ## 11. 设计结论
 

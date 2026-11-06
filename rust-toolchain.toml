@@ -2,9 +2,9 @@
 #
 # 与 Cargo.toml 的关系：
 # - 本文件 channel          = 日常开发/发布用的构建版本
-# - Cargo.toml rust-version = MSRV（能编译的最低版本，由 opendal 0.59 决定 = 1.91）
+# - Cargo.toml rust-version = MSRV（能编译的最低版本，由 rig-core 0.46 决定 = 1.97.1）
 # - 约束 channel >= rust-version
 [toolchain]
-channel = "1.96.0"
+channel = "1.99.1"
 components = ["clippy", "rustfmt"]
 profile = "minimal"

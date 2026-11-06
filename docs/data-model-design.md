@@ -9,6 +9,7 @@
 - 数据集登记与来源：`datasets`、`dataset_tags`
 - 运行时注册项：`models`、`agents`
 - 任务执行记录：`tasks`、`runs`
+- 分片上传续传状态：`uploads`
 - 迁移版本：`schema_migrations`
 
 核心原则：
@@ -52,9 +53,6 @@ CREATE TABLE IF NOT EXISTS models (
     base_url TEXT,
     model TEXT NOT NULL,
     api_key_env TEXT,
-    price_input REAL,
-    price_cached_input REAL,
-    price_output REAL,
     timeout_secs INTEGER,
     max_concurrency INTEGER,
     max_rpm INTEGER,
@@ -86,13 +84,12 @@ CREATE TABLE IF NOT EXISTS tasks (
     cwd TEXT,
     pid INTEGER,
     retry_of TEXT,
-    progress REAL NOT NULL DEFAULT 0.0,
+    progress REAL NOT NULL DEFAULT 0.0 CHECK(progress >= 0.0 AND progress <= 1.0),
     output TEXT,
     error TEXT,
     created_at TEXT NOT NULL,
     started_at TEXT,
     finished_at TEXT,
-    is_remove INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(retry_of) REFERENCES tasks(id)
 );
 
@@ -111,8 +108,21 @@ CREATE TABLE IF NOT EXISTS runs (
     athlete_stats TEXT,
     referee_stats TEXT,
     created_at TEXT NOT NULL,
-    is_remove INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY(task_id) REFERENCES tasks(id)
+);
+
+CREATE TABLE IF NOT EXISTS uploads (
+    task_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    bucket TEXT NOT NULL,
+    key TEXT NOT NULL,
+    upload_id TEXT NOT NULL,
+    content_hash TEXT,
+    completed_parts TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL CHECK(status IN ('uploading', 'completed', 'aborted')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(task_id, key)
 );
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -145,7 +155,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 两表保存执行者注册项：
 
-- `models`：模型注册，含 provider、base_url、model、api_key_env、price_*、timeout 等
+- `models`：模型注册，含 provider、base_url、model、api_key_env、timeout 等（不存单价，费用不在本工具内计算）
 - `agents`：agent 注册，含 kind、command、args、prompt_via、workdir、timeout 等
 
 核心原则：
@@ -184,9 +194,28 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 - `failures`：业务失败格子数
 - `athlete_stats` / `referee_stats`：统计快照
 
-`run.athletes` / `run.referees` 为统计视图，分别取自 `runs.athlete_stats` / `runs.referee_stats`；裁判员配置快照与被评运动员名单另存于独立字段，不与统计混用。
+`runs.athletes`（被评运动员名单快照）与 `runs.referees`（裁判员配置快照，含 name / version / hash / toml / prompt）只存快照；统计只落在 `athlete_stats` / `referee_stats`。`task show` 的 `run.athletes` / `run.referees` 统计视图取自 `athlete_stats` / `referee_stats`，与这两个快照列不是同一批数据。
 
-### 3.6 `schema_migrations`
+`models` / `agents` / `athletes` / `referees` / `athlete_stats` / `referee_stats` 列均为 **JSON 字符串**（数组或对象），由 service 层用 `serde_json` 序列化 / 反序列化，不采用逗号拼接等自定义编码。
+
+### 3.6 `uploads`
+
+记录 `import` 分片上传的续传状态（见 [cli.md §5.4.1](./cli.md#541-import-上传的分片与断点续传)），仅存 SQLite、不驻留内存，配合 daemon 崩溃恢复：
+
+- `task_id` + `key`：联合主键，一次任务对一个目标 key 只有一条续传记录
+- `platform` / `bucket` / `key`：对象存储定位（`platform` 为 `cos` / `s3` / `fs`）
+- `upload_id`：OpenDAL multipart 上传的会话 ID，续传时据此恢复
+- `content_hash`：本地文件内容 hash（`sha2`），合并前校验一致性
+- `completed_parts`：已完成分片的 `etag` 序列（JSON 数组），续传时跳过已完成分片
+- `status`：`uploading` / `completed` / `aborted`
+
+生命周期：
+
+- 分片上传开始时插入 `uploading` 记录；每完成一片更新 `completed_parts`；
+- 全部完成并 `CompleteMultipartUpload` 后置 `completed`，或失败 / 取消 / 超时时 `AbortMultipartUpload` 并置 `aborted`；
+- 任务结束（含失败、取消、超时）删除对应记录；孤儿记录（任务不处于 `running`，或 `running` 但执行进程已不存在）按 [§4](#4-任务状态机必须强制执行) 的崩溃兜底口径随任务回收，`upload_id` 残留的分片由对象存储端的生命周期规则或下次 `import` 前 `Abort` 清理。
+
+### 3.7 `schema_migrations`
 
 保存已应用迁移版本：
 
@@ -242,7 +271,7 @@ running -> failed                # 孤儿任务回收：执行进程已不存在
 
 ## 6. 软删除口径
 
-`datasets` / `models` / `agents` 通过 `remove` / `update --restore` 软删除；`tasks` / `runs` 同样以 `is_remove` 标记软删除，历史记录不物理删除：
+软删除只作用于 `datasets` / `models` / `agents`（通过 `remove` / `update --restore`）；`tasks` / `runs` 是**只追加的历史记录**，不提供软删除，物理记录也不删除：
 
 - `remove` 只置 `is_remove=1`，`datasets` 额外记录 `removed_at`
 - `update --restore` 置 `is_remove=0`；`datasets` 另清空 `removed_at`

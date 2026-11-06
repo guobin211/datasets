@@ -2,7 +2,7 @@
 name = "datasets"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.97.1"
 authors = ["michaelbguo"]
 license = "UNLICENSED"
 description = "datasets 本地评测 CLI + lib：数据集变换 / 本地与 COS 传输 / 本机 API Key 模型评测 / 结果回流"
@@ -21,35 +21,34 @@ path = "src/main.rs"
 # 序列化 / 错误
 thiserror = "2"
 serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 toml = "1"
 csv = "1"
 
 # 异步运行时
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync", "time", "signal", "process", "fs"] }
+tokio-util = "0.7"
 futures = "0.3"
-async-trait = "0.1"
 
 # 对象存储（多平台桶：cos / s3 / fs；oss / obs 按需加 feature）
 opendal = { version = "0.59", features = ["services-cos", "services-s3", "services-fs"] }
 
 # 模型调用（openai / anthropic / deepseek 统一 completion；reqwest feature 提供 HTTP 传输）
-rig-core = { version = "0.44", features = ["reqwest"] }
+rig-core = { version = "0.46", features = ["reqwest"] }
 
 # CLI / 配置
 clap = { version = "4", features = ["derive"] }
-dirs = "6"
+dirs = "7"
 humantime = "2"
-indicatif = "0.17"
+indicatif = "0.18"
 
-# 本地 HTTP + MCP 服务（对外只暴露 127.0.0.1 端点，不访问任何外部平台）
-axum = "0.8"
-# rmcp 3.x；骨架阶段只开 server，stdio / streamable-http transport 按需开 feature
-rmcp = { version = "3", features = ["server"] }
+# 本地 MCP 服务（stdio 经 IPC 连 daemon，只服务本机工具链；不提供 HTTP）
+# rmcp 3.x；server + transport-io（stdio）；streamable-http 不启用
+rmcp = { version = "3", features = ["server", "transport-io"] }
 
 # 并发 / 数据结构
 dashmap = "6"
-parking_lot = "0.12"
+parking_lot = "0.13"
 
 # 跨平台系统工具
 interprocess = { version = "2", features = ["tokio"] }
@@ -60,13 +59,16 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # 工具
-rand = "0.8"
+rand = "0.10"
+rand_chacha = "0.10"
 uuid = { version = "1", features = ["v4"] }
 regex = "1"
-cos-rust-sdk = "0.1.2"
+sha2 = "0.11"
+semver = "1"
+handlebars = "6.4"                    # 模板引擎（prompt、列名模板、输出文件名、ctx.render），见 docs/cli.md §3.4
 
-# SQLite（0.7 携 bundled SQLite 并 re-export rusqlite；不再单独依赖 rusqlite）
-tokio-rusqlite = { version = "0.7", features = ["bundled"] }
+# SQLite（0.8 携 bundled SQLite 并 re-export rusqlite；不再单独依赖 rusqlite）
+tokio-rusqlite = { version = "0.8", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"
