@@ -15,8 +15,8 @@
 | SQLite 元数据库 | `~/.config/datasets/<mode>/metadata.db` |
 | 持久数据目录 | `~/.config/datasets/<mode>/data/`（参考答案库、词表等，裁判员与脚本直接读取，不复制） |
 | 临时文件目录 | `~/.config/datasets/<mode>/tmp/<task_id>/`（任务结束即删） |
-| 裁判员目录 | `~/.config/datasets/<mode>/referee/<name>/`（`referee.toml` + `referee.ts` 等，见 [§8.7](#87-裁判员目录)） |
-| 脚本运行时 | Node.js（≥ 20.11）+ app 目录本地 tsx；app 目录自动生成 `package.json` 并用 pnpm 安装依赖 |
+| 裁判员目录 | `~/.config/datasets/<mode>/referee/<name>/`（`referee.toml` + `referee.js` 等，见 [referee-design.md](./referee-design.md)） |
+| 脚本运行时 | 数据筛选脚本与裁判员脚本只支持 `.js`（ESM），Node.js ≥ 22.13 经权限模型受限启动；类型定义随 CLI 提供（见 [script-design.md](./script-design.md)） |
 | 任务日志目录 | `~/.config/datasets/<mode>/logs/<task_id>.log`（daemon 自身日志为 `logs/daemon.log`） |
 | daemon IPC | `~/.config/datasets/<mode>/daemon.sock`（权限 0600）；启动互斥锁 `daemon.lock`；身份文件 `daemon.pid` |
 | 默认 HTTP 监听 | prod `127.0.0.1:7070` / dev `127.0.0.1:7071`（Bearer token 鉴权；token 未配置则不开 HTTP） |
@@ -27,7 +27,7 @@
 1. [定位与边界](#1-定位与边界)
 2. [架构分层](#2-架构分层)
 3. [配置](#3-配置)
-4. [数据模型（SQLite）](#4-数据模型sqlite)
+4. [数据模型（SQLite）](./data-model.md)
 5. [数据读取](#5-数据读取)
 6. [筛选表达式](#6-筛选表达式--filter)
 7. [抽样](#7-抽样)
@@ -45,9 +45,9 @@
 
 ### 1.1 四大职责
 
-1. **数据集登记与流转** —— 本地文件或对象存储对象登记进数据集列表（SQLite），支持条件筛选、随机抽样与脚本抽样，导出为待评测数据集。
-2. **跑运动员，记录数据** —— 运动员（执行者）分为两类：**model**（用本机配置的 API Key 直连模型 API，OpenAI / Anthropic / DeepSeek 兼容协议）与 **agent**（调用本地 claude-code、codex 等）。按 "问题 × 多运动员" 并发作答，把答案、思维链、耗时、token、费用等数据作为追加列，与原列一起写出宽表新文件（JSONL，不覆盖输入；[§8.1](#81-执行流程) ~ [§8.5](#85-评测指标口径)）。
-3. **跑裁判员，打分** —— 对运动员的答案逐行评分，评分列追加到宽表新文件。每个裁判员是一个独立目录（`referee/<name>/`，含 `referee.toml` 配置与 `referee.ts` 脚本），新增裁判员只需新建目录（[§8.7](#87-裁判员目录)）。既可接在 `run` 之后（`run --referee`），也可用 `dataset judge` 对**已含多个模型答案列**的数据独立打分（如 `question, answer_deepseek-xxx, answer-glm-xxx, ...`）。裁判员可配置多个、按名称选择，每个裁判员可独立配置裁判算子、裁判模型、裁判 prompt、读取 / 写入列等（[§8.6](#86-裁判员评分)）。裁判算子等能力后续再完善（附录 A.5）。
+1. **数据集登记与流转** —— 本地文件或对象存储对象登记进数据集列表（SQLite），支持条件筛选、随机抽样与数据筛选脚本，导出为待评测数据集。
+2. **跑运动员，记录数据** —— 运动员（执行者）分为两类：**model**（用本机配置的 API Key 直连模型 API，OpenAI / Anthropic / DeepSeek 兼容协议）与 **agent**（调用本地 claude-code、codex 等）。按 "问题 × 多运动员" 并发作答，把答案、思维链、耗时、token、费用等数据作为追加列，与原列一起写出宽表新文件（JSONL，不覆盖输入；[athlete-design.md](./athlete-design.md) / [§8.1](#81-运动员执行设计) ~ [§8.5](#85-评测指标口径)）。
+3. **跑裁判员，打分** —— 对运动员的答案逐行评分，评分列追加到宽表新文件。每个裁判员是一个独立目录（`referee/<name>/`，含 `referee.toml` 配置与 `referee.js` 脚本），新增裁判员只需新建目录（[referee-design.md](./referee-design.md)）。既可接在 `run` 之后（`run --referee`），也可用 `dataset judge` 对**已含多个模型答案列**的数据独立打分（如 `question, answer_deepseek-xxx, answer-glm-xxx, ...`）。裁判员可配置多个、按名称选择，每个裁判员可独立配置裁判算子、裁判模型、裁判 prompt、读取 / 写入列等（[§8.6](#86-裁判员评分)）。裁判算子等能力后续再完善（附录 A.5）。
 4. **常驻服务** —— 按需自动拉起的 daemon 承担后台任务队列（import / export / run / judge），暴露仅限本机的 IPC 与 HTTP；MCP 以 stdio / streamable-http 接入。
 
 ### 1.2 非目标
@@ -89,7 +89,8 @@ src/service/（DatasetService，daemon 模式与本地模式共用）
 | `src/service/llm_model/` | 注册模型管理（provider / base_url / model / api_key_env） |
 | `src/service/llm_agent/` | 注册 agent 管理（kind / command / args / timeout） |
 | `src/service/rig_agent/` | 跑运动员：把 question 经 model / agent 写成 answer 并记录指标（行 × 运动员并发） |
-| `src/service/referee/` | 跑裁判员：加载裁判员目录、`llm` 算子、`script` 算子运行时（`referee.ts` 进程与 JSON-RPC），见 [§8.6](#86-裁判员评分) / [§8.7](#87-裁判员目录) |
+| `src/service/referee/` | 跑裁判员：加载裁判员目录、`llm` 算子、`script` 算子运行时（常驻 Node 进程池与 JSON-RPC），见 [§8.6](#86-裁判员评分) / [script-design.md §4](./script-design.md#4-裁判员脚本) |
+| `src/service/node_runtime/` | Node.js 运行时：版本探测、`runtime/` 托管文件、依赖按需安装、受限启动器（权限参数、env 白名单、进程组），两类脚本共用，见 [script-design.md §2](./script-design.md#2-公共约定) |
 
 **分层铁律**：
 
@@ -117,8 +118,8 @@ src/service/（DatasetService，daemon 模式与本地模式共用）
 | 阻塞线程池 | `tokio::task::spawn_blocking` | 上限 `[tasks] max_blocking_threads`（默认 64） | 文件读取与 JSON / CSV 解析、`--filter` 求值、抽样、排序、JSONL 写出、目录哈希 |
 | SQLite 线程 | tokio-rusqlite 每连接一个专用线程 | 写 1 + 读 4 | 写队列与查询（[§4.3](#43-并发写口径)） |
 | agent 子进程 | `tokio::process` | 每个 agent 不超过 `[[agent]] max_concurrency` | claude-code / codex 等 |
-| 裁判员脚本进程 | `tokio::process` 运行 tsx | 每任务每裁判员 `[script] workers` 个 | `referee.ts`（[§8.7.5](#875-运行时与通信协议)） |
-| 一次性脚本进程 | `tokio::process` | 每个 export 任务 1 个 | `--script` 抽样脚本 |
+| 裁判员脚本进程 | `tokio::process` 经 Node 受限启动器 | 每任务每裁判员 `[script] workers` 个 | `referee.js`（[script-design.md §4.6](./script-design.md#46-进程生命周期)） |
+| 一次性脚本进程 | `tokio::process` 经 Node 受限启动器 | 每个 export 任务 1 个 | `--script` 数据筛选脚本（[script-design.md §3](./script-design.md#3-数据筛选脚本)） |
 
 规则：
 
@@ -165,7 +166,7 @@ reader（阻塞线程）              调度器（async）                      
   1. **任务许可**：每个任务一个信号量，容量为 `--concurrency`（默认 `[tasks] max_concurrency`），限制本任务在途格子数；
   2. **资源许可**：按格子类型获取全局资源——model 格子取 `model:<name>` 信号量（容量 `[[model]] max_concurrency`）并消耗该模型令牌桶的一个令牌（`max_rpm > 0` 时）；agent 格子取 `agent:<name>` 信号量（容量 `[[agent]] max_concurrency`）；script 裁判格子取该任务该裁判员的脚本进程槽位（`workers × concurrency`）。
 
-  资源信号量在 daemon 内**跨任务共享**，同一模型作为运动员和作为裁判也共用一个信号量。`referee.ts` 里的 `ctx.llm()` 在已持有脚本槽位的情况下再获取模型许可；由于获取顺序始终是"任务 → 脚本槽位 → 模型"，且持有模型许可时不会再等待其他许可，不会形成死锁。
+  资源信号量在 daemon 内**跨任务共享**，同一模型作为运动员和作为裁判也共用一个信号量。`referee.js` 里的 `ctx.llm()` 在已持有脚本槽位的情况下再获取模型许可；由于获取顺序始终是"任务 → 脚本槽位 → 模型"，且持有模型许可时不会再等待其他许可，不会形成死锁。
 * **公平**：tokio `Semaphore` 按等待顺序发放许可，多个任务争用同一模型时轮流获得，不会有任务饿死。
 * **退避期间释放许可**：请求失败进入重试退避（[§8.2](#82-失败隔离与重试口径)）时，先归还资源许可与任务许可，等待结束后重新排队获取，避免限流时占着并发位空转。
 * **429 冷却**：某模型返回 429 时进入冷却期（取 `Retry-After` 与本次退避时长中的较大值），冷却期内**所有任务**对该模型的新请求都暂停发出，冷却结束后恢复；冷却与令牌桶都按模型名全局生效。
@@ -250,12 +251,12 @@ io_slots = 2                            # io 车道（import / export）同时�
 eval_slots = 2                          # eval 车道（run / judge）同时运行的任务数
 max_queued_tasks = 100                  # 两条车道排队任务总数上限，超出时提交报 DATASETS_E0006_TASK
 
-# 裁判员不写在本文件：每个裁判员是 app 目录 referee/ 下的一个子目录（referee.toml + referee.ts 等），详见 §8.7
+# 裁判员不写在本文件：每个裁判员是 app 目录 referee/ 下的一个子目录（referee.toml + referee.js 等），详见 referee-design.md
 
-[runtime]                               # Node.js 脚本运行时（referee.ts 与 --script 的 .ts 共用），详见 §3.6
-node = "node"                           # Node.js 可执行文件，要求 >= 20.11（脚本可用 import.meta.dirname）
-pnpm = "pnpm"                           # 依赖安装工具，只支持 pnpm
-auto_install = true                     # app 目录 package.json / pnpm-lock.yaml 变化或 node_modules 缺失时，执行脚本前自动 pnpm install
+[runtime]                               # Node.js 脚本运行时（数据筛选脚本与裁判员脚本共用），详见 script-design.md §2
+node = "node"                           # Node.js 可执行文件，要求 >= 22.13（权限模型稳定）；>= 25 时权限模型额外拦截网络
+pnpm = "pnpm"                           # 依赖安装工具，只支持 pnpm；仅在 package.json 声明了 dependencies 或执行 referee check / runtime install 时需要
+auto_install = true                     # 需要依赖且 package.json / pnpm-lock.yaml 变化或 node_modules 缺失时，执行前自动 pnpm install
 # registry = "https://registry.npmmirror.com/"  # 可选：pnpm 安装源，写入 app 目录 .npmrc
 
 [[cos]]                      # 可配多个桶，按 name 在 cos://<name>/<key> 中引用
@@ -354,7 +355,7 @@ timeout_secs = 300
 
 **提交到 daemon 时的口径**：
 
-* **路径**：CLI 先把 `--data` / `--output` / `--script` 等本地路径按 CLI 当前工作目录解析为绝对路径，再写入 `tasks.params`；提交时的工作目录记入 `tasks.cwd`，仅供 `workdir = "cwd"` 的 agent 使用；`--script` 与 `referee.ts` 一律以 app 目录为工作目录（[§3.6](#36-app-目录与-nodejs-运行时)），与提交时所在目录无关。
+* **路径**：CLI 先把 `--data` / `--output` / `--script` 等本地路径按 CLI 当前工作目录解析为绝对路径，再写入 `tasks.params`；提交时的工作目录记入 `tasks.cwd`，仅供 `workdir = "cwd"` 的 agent 使用；`--script` 与 `referee.js` 一律以 app 目录为工作目录（[§3.6](#36-app-目录与-nodejs-运行时)），与提交时所在目录无关。
 * **凭据随任务携带**：由于 daemon 可能由别的终端自动拉起，其进程环境不可预期。CLI 提交任务时，把该任务需要的 env（运动员模型的 `api_key_env`；所选裁判员 `[llm] model` 与 `[script] allow_models` 中**全部**模型的 `api_key_env`——裁判员在提交时解析，`ctx.llm()` 改用白名单内其他模型时 key 也已带上；所涉存储的 `*_env`）**按 CLI 当前环境取值**，经 IPC（0600 socket）随请求发送；daemon 只在内存中为该任务使用，不写 SQLite、不写日志、任务结束即丢弃。CLI 环境中缺失的 env 回退 daemon 自身环境，两边都缺失时立即返回 `DATASETS_E0005_MISSING_ENV`，不进入队列。经 HTTP / MCP 提交的任务只使用 daemon 自身环境。
 * **等待与中断**：`-w` 等待期间按 `Ctrl-C` 只中断等待，**不取消任务**（任务在 daemon 中继续执行），CLI 提示用 `dataset task cancel <id>` 取消、`dataset task logs <id> --follow` 继续查看。
 * CLI 和 HTTP / MCP 的输出、错误码和任务状态必须保持一致，不能出现两套行为语义。
@@ -397,257 +398,55 @@ timeout_secs = 300
 
 ### 3.6 app 目录与 Node.js 运行时
 
-**app 目录**即 `~/.config/datasets/<mode>/`（如 `~/.config/datasets/prod/`），是本工具的全部本地状态所在，也是**所有脚本（`--script` 抽样脚本、`referee.ts` 裁判员脚本）的统一工作目录**：
+**app 目录**即 `~/.config/datasets/<mode>/`（如 `~/.config/datasets/prod/`），是本工具的全部本地状态所在，也是**所有脚本（数据筛选脚本、裁判员脚本）的统一工作目录**：
 
 ```
 ~/.config/datasets/prod/                app 目录 = 脚本工作目录（cwd）
 ├─ config.toml                          配置
 ├─ metadata.db                          SQLite
-├─ package.json                         自动创建：脚本依赖清单（用户可追加依赖）
-├─ pnpm-lock.yaml                       pnpm 生成
-├─ tsconfig.json                        自动创建：TypeScript 7 类型检查配置与 @datasets/referee 路径别名
-├─ node_modules/                        pnpm 安装
-├─ runtime/                             程序托管：referee-runner.ts、referee.d.ts（随 CLI 版本覆盖，勿手改）
-├─ referee/<name>/                      裁判员目录（§8.7）
-├─ scripts/                             --script 脚本白名单目录（§7.3）
+├─ package.json                         自动创建："type": "module"；dependencies 为脚本运行期依赖
+├─ pnpm-lock.yaml                       pnpm 生成（仅在安装过依赖后存在）
+├─ tsconfig.json                        自动创建：JS 脚本的类型检查与编辑器配置（allowJs + checkJs）
+├─ node_modules/                        pnpm 安装（有运行期依赖或做类型检查时才需要）
+├─ runtime/                             程序托管：referee-runner.mjs、types/*.d.ts（随 CLI 版本覆盖，勿手改）
+├─ referee/<name>/                      裁判员目录（referee-design.md）
+├─ scripts/                             数据筛选脚本目录（§7.3）
 ├─ data/                                持久数据：参考答案库、词表、题库等，脚本以 data/xxx 相对路径直接读取，程序不复制、不清理
 ├─ tmp/<task_id>/                       任务临时文件（cos:// 下载、filter 中间结果），任务结束即删（§5.3）
 ├─ logs/                                任务日志与 daemon.log
 └─ daemon.sock / daemon.lock / daemon.pid   daemon IPC、启动锁与身份文件
 ```
 
-**Node.js 运行时**：
+**脚本运行时**（完整设计见 [script-design.md §2](./script-design.md#2-公共约定)）：
 
-* `.ts` 脚本一律以 **Node.js + app 目录本地 tsx** 执行：`node_modules/.bin/tsx <脚本>`，工作目录为 app 目录；不使用全局 tsx，也不经 `npx` 临时下载。
-* **自动创建**：首次需要执行 Node 脚本时（或执行 `referee new` / `referee check` / `runtime install` 时），若 app 目录没有 `package.json` / `tsconfig.json` 则自动生成；**已存在时不覆盖**，只检查必需依赖：
-
-  ```json
-  {
-    "name": "datasets-app-prod",
-    "private": true,
-    "type": "module",
-    "devDependencies": {
-      "tsx": "^4",
-      "typescript": "^7",
-      "@types/node": "^22"
-    }
-  }
-  ```
-
-  自动生成的 `tsconfig.json`（按 TypeScript 7 的默认值与已移除选项编写）：
-
-  ```json
-  {
-    "compilerOptions": {
-      "target": "es2023",
-      "module": "preserve",
-      "noEmit": true,
-      "allowImportingTsExtensions": true,
-      "strict": true,
-      "skipLibCheck": true,
-      "types": ["node"],
-      "paths": { "@datasets/referee": ["./runtime/referee.d.ts"] }
-    },
-    "include": ["referee/**/*.ts", "scripts/**/*.ts", "runtime/**/*.ts"]
-  }
-  ```
-
-  裁判员脚本以 `import type { ... } from "@datasets/referee"` 引用类型。用户删掉了 `tsx` / `typescript` / `@types/node` 时自动补回 `devDependencies`（只追加，不改动用户已有依赖）。
-* **TypeScript 7 约束**：
-  * `types` 默认值为 `[]`，不再自动加载 `@types/*`，因此必须显式写 `"types": ["node"]`，否则 `process`、`Buffer`、`node:fs` 等类型缺失；
-  * `baseUrl` 已移除（写了即报 TS5102），`paths` 直接相对 `tsconfig.json` 所在目录解析；`moduleResolution: node10`、`target: es5` 等同样已移除，模板中不出现；
-  * 类型检查统一执行 `node_modules/.bin/tsc --noEmit -p tsconfig.json`。有 `tsconfig.json` 时向 `tsc` 直接传文件路径会报 TS5112，因此 `referee check <name>` 也是检查整个工程，只报告该裁判员目录下文件的诊断；
-  * TypeScript 7.0 没有稳定的编程 API，本工具**只调用 `tsc` 命令行**，不 `import "typescript"`；
-  * TypeScript 只用于类型检查：运行时由 tsx（基于 esbuild）直接擦除类型执行，不依赖 TypeScript 版本，类型检查失败也不阻止 `judge` / `export` 运行（只有 `referee check` 会报错）；
-  * 用户已有 `package.json` 把 `typescript` 锁在 7 以下时不强制升级，`runtime status` 给出提示。
-* **自动安装**：`[runtime] auto_install = true` 时，执行 Node 脚本前比较 `package.json` + `pnpm-lock.yaml` 的哈希与 `node_modules/.datasets-install-hash` 记录值，不一致或 `node_modules` 缺失即在 app 目录执行 `pnpm install`，成功后更新哈希。安装过程持有 `app/.install.lock` 文件锁，多个任务并发时只装一次；安装输出写入任务日志。
-* **追加依赖**：裁判员或脚本需要第三方包时，在 app 目录执行 `pnpm add <pkg>`（或直接改 `package.json`），下次执行前会自动安装。所有裁判员与脚本共享这一份依赖，因此 `referee/<name>/` 下不再放 `package.json`。
-* **预检**：找不到 `node`（或版本低于 20.11）、找不到 `pnpm`、`pnpm install` 失败，统一报 `DATASETS_E0016_NODE_RUNTIME`，在任务提交时检查，不进入队列。`dataset runtime status` 可查看当前状态。
-* Python 脚本（`.py`）同样以 app 目录为工作目录，用 `uv run python` 执行，依赖由脚本自身的 inline metadata（PEP 723）声明。
+* 数据筛选脚本（`export --script`）与裁判员脚本（`referee/<name>/referee.js`）都只支持 ESM 格式的 `.js`，由 Node.js（≥ 22.13）直接执行；类型定义由 CLI 写入 `runtime/types/`，编写期通过 JSDoc 引用。
+* 两类脚本都经受限启动器（`src/service/node_runtime/`）运行：`--permission` 只授予必要目录的读权限，写权限只有数据筛选脚本的输出文件，不能起子进程，Node ≥ 25 时不能访问网络；环境变量按白名单透传，脚本拿不到任何凭据。
+* `package.json` / `tsconfig.json` 在首次需要时自动创建；只有 `dependencies` 非空时才调用 pnpm 安装，没有第三方依赖的脚本在未安装 pnpm 的机器上也能运行。
+* Node.js 不可用（找不到或版本低于 22.13）或依赖安装失败时，任务提交即报 `DATASETS_E0016_NODE_RUNTIME`，不进入队列。
 
 ***
 
 ## 4. 数据模型（SQLite）
 
-* 默认路径：`~/.config/datasets/<mode>/metadata.db`。
-* PRAGMA：`journal_mode=WAL`、`synchronous=NORMAL`、`foreign_keys=ON`、`busy_timeout=5000`。
-* 迁移只做**前向兼容增量**，已应用版本记录在 `schema_migrations`，启动时幂等重放。
+> 详细设计已独立整理到 [data-model.md](./data-model.md)。主文档保留入口说明，避免架构总览文档过长。
+>
+> 关键点：SQLite 负责数据集元信息、模型 / agent 注册、任务状态、run 快照和 schema 迁移；任务状态机、并发写口径和软删除规则详见 [data-model.md](./data-model.md)。
 
 ### 4.1 表结构
 
-| 表 | 关键列 |
-| --- | --- |
-| `datasets` | `id`（TEXT，形如 `ds_1a2b3c`）、`name`、`source`、`storage`（local/cos）、`format`、`size_bytes`、`row_count`、`description`、`created_at`、`updated_at`、`is_remove`、`removed_at` |
-| `dataset_tags` | `dataset_id`、`tag`、`created_at`；主键为 (dataset_id, tag)，`dataset_id` 外键 → `datasets.id`（不级联） |
-| `models` | `name`（主键）、`provider`、`base_url`、`model`、`api_key_env`、`price_input`、`price_cached_input`、`price_output`、`timeout_secs`、`max_concurrency`、`max_rpm`、`created_at`、`updated_at`、`is_remove` |
-| `agents` | `name`（主键）、`kind`、`command`、`args`、`prompt_via`、`workdir`、`timeout_secs`、`max_concurrency`、`created_at`、`updated_at`、`is_remove` |
-| `tasks` | `id`、`kind`（import/export/run/judge）、`mode`（local/daemon，对应本地模式 / daemon 模式）、`status`（queued/running/partial_success/succeeded/failed/cancelled/timeout）、`params`（JSON）、`cwd`、`pid`、`retry_of`、`progress`、`output`、`error`、`created_at`、`started_at`、`finished_at`、`is_remove` |
-| `runs` | `id`（主键）、`task_id`（外键 → `tasks.id`）、`kind`（run/judge）、`data`；**运动员侧**：`models` / `agents`（配置快照）、`athletes`（本轮被评运动员名单；`judge` 为从列名发现的名称）、`athlete_stats`（执行统计）；**裁判员侧**：`referees`（配置快照）、`referee_stats`（评分统计，含裁判 token 与费用）；`output`、`row_count`、`failures`、`created_at`、`is_remove` |
-| `schema_migrations` | `version`（主键）、`applied_at` |
+最小 SQL schema、字段定义与表关系详见 [data-model.md](./data-model.md#2-最小-sql-schema落地版) 与 [data-model.md](./data-model.md#3-表结构说明)。
 
-约定：
+### 4.2 任务状态机
 
-* `tasks.status` 遵循 [§4.2](#42-任务状态机必须强制执行) 的有限状态机；`partial_success` 用于“部分格子失败，但结果文件可读”的评测场景，该状态仍视为任务完成，失败数见 `runs.failures`。
-* `tasks.params`、`agents.args` 与 `runs.models/agents/referees/athlete_stats/referee_stats` 整体使用 JSON 字符串存储；`agents.args` 配置为 TOML 数组，seed 时序列化为 JSON 数组字符串（如 `["-p","{prompt}"]`）。
-* `runs.models` / `agents` / `referees` 存**完整配置快照**而非外键或注册名：模型快照含 `name / provider / base_url / model / api_key_env（变量名）/ 单价 / timeout_secs`，agent 快照含 `name / kind / command / args / prompt_via / workdir / timeout_secs`，裁判员快照为 `{name, version, hash, toml, prompt}`（`hash` 为裁判员目录内容哈希，`toml` / `prompt` 为任务开始时读取的 `referee.toml` 与 prompt 文本；不复制目录，见 [§8.7.6](#876-加载记录与可追溯)）；均不含任何密钥值。注册项之后被改名、`update` 或软删除，历史 run 的语义不变。
-* **运动员与裁判员的落盘字段拆分**：配置快照与运行统计分开存，互不复用同一列 —— `models` / `agents` / `athletes` 只存运动员的配置与名单，`referees` 只存裁判员配置快照；运动员执行统计写 `athlete_stats`，裁判评分统计写 `referee_stats`。`athlete_stats` 按运动员记录成功 / 失败数、平均耗时、token 与费用（`judge` 任务只有 `judged` 计数）；`referee_stats` 按 `裁判员 × 运动员` 记录 `scored` / `skipped` / `failed` / `avg_score` / `pass_rate` / `dims`，以及裁判模型的 `judge_prompt_tokens` / `judge_completion_tokens` / `judge_cost`。两列均为 JSON 数组，任务结束时一次写入，不从输出文件回算；裁判 token 与费用不写进宽表（[§8.4](#84-输出与列命名) 的裁判列只有 5 类），只落在这里。
-* `tasks.pid` 记录执行进程（daemon 模式为 daemon 进程，本地模式为 CLI 进程），用于判断 `running` 任务是否仍存活（见 [§5.3](#53-临时文件生命周期与兜底)）。
-* `datasets` / `models` / `agents` / `tasks` / `runs` 一律软删除（`is_remove`）；`cancelled` / `failed` / `timeout` 是任务级状态，与软删除正交。历史记录不做物理删除。
-* 时间统一用 RFC3339 字符串；id 统一用字符串（符合 JSON 跨语言传输规范）。
-* `dataset_tags.dataset_id`、`runs.task_id`、`tasks.retry_of` 使用外键保证引用完整性；由于全部软删除、不做物理删除，外键**不设级联删除**。
-
-#### 4.1.1 最小 SQL schema（落地版）
-
-实施阶段建议先落这些最小表；后续只按增量迁移扩展，禁止重建主库：
-
-```sql
-CREATE TABLE IF NOT EXISTS datasets (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    source TEXT NOT NULL,
-    storage TEXT NOT NULL CHECK(storage IN ('local', 'cos')),
-    format TEXT NOT NULL CHECK(format IN ('jsonl', 'csv', 'json')),
-    size_bytes INTEGER NOT NULL DEFAULT 0,
-    row_count INTEGER NOT NULL DEFAULT 0,
-    description TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    is_remove INTEGER NOT NULL DEFAULT 0,
-    removed_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS dataset_tags (
-    dataset_id TEXT NOT NULL,
-    tag TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY(dataset_id, tag),
-    FOREIGN KEY(dataset_id) REFERENCES datasets(id)
-);
-
-CREATE TABLE IF NOT EXISTS models (
-    name TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,
-    base_url TEXT,
-    model TEXT NOT NULL,
-    api_key_env TEXT,
-    price_input REAL,
-    price_cached_input REAL,
-    price_output REAL,
-    timeout_secs INTEGER,
-    max_concurrency INTEGER,
-    max_rpm INTEGER,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    is_remove INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS agents (
-    name TEXT PRIMARY KEY,
-    kind TEXT NOT NULL,
-    command TEXT NOT NULL,
-    args TEXT,
-    prompt_via TEXT NOT NULL DEFAULT 'arg' CHECK(prompt_via IN ('arg', 'stdin')),
-    workdir TEXT NOT NULL DEFAULT 'isolated' CHECK(workdir IN ('isolated', 'cwd')),
-    timeout_secs INTEGER,
-    max_concurrency INTEGER,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    is_remove INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS tasks (
-    id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK(kind IN ('import', 'export', 'run', 'judge')),
-    mode TEXT NOT NULL CHECK(mode IN ('local', 'daemon')),
-    status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'partial_success', 'succeeded', 'failed', 'cancelled', 'timeout')),
-    params TEXT NOT NULL,
-    cwd TEXT,
-    pid INTEGER,
-    retry_of TEXT,
-    progress REAL NOT NULL DEFAULT 0.0,
-    output TEXT,
-    error TEXT,
-    created_at TEXT NOT NULL,
-    started_at TEXT,
-    finished_at TEXT,
-    is_remove INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY(retry_of) REFERENCES tasks(id)
-);
-
-CREATE TABLE IF NOT EXISTS runs (
-    id TEXT PRIMARY KEY,
-    task_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('run', 'judge')),
-    data TEXT NOT NULL,
-    models TEXT,
-    agents TEXT,
-    athletes TEXT,
-    referees TEXT,
-    output TEXT,
-    row_count INTEGER NOT NULL DEFAULT 0,
-    failures INTEGER NOT NULL DEFAULT 0,
-    athlete_stats TEXT,
-    referee_stats TEXT,
-    created_at TEXT NOT NULL,
-    is_remove INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY(task_id) REFERENCES tasks(id)
-);
-
-CREATE TABLE IF NOT EXISTS schema_migrations (
-    version TEXT PRIMARY KEY,
-    applied_at TEXT NOT NULL
-);
-```
-
-### 4.2 任务状态机（必须强制执行）
-
-任务状态只允许以下转移：
-
-```text
-queued -> running -> succeeded
-                  -> partial_success
-                  -> failed
-                  -> cancelled
-                  -> timeout
-queued -> cancelled              # 排队中被取消
-running -> failed                # 孤儿任务回收：执行进程已不存在
-```
-
-* **终态不可变**：`succeeded` / `partial_success` / `failed` / `cancelled` / `timeout` 一旦写入不再改变。
-* **重试 = 新建任务**：`task retry <id>` 按原 `params` 新建一个任务，`retry_of` 指向原任务；原任务及其 run 记录原样保留。评测结果的“只补失败格子”用 `run --retry-failed`（[§8.4](#84-输出与列命名)），同样是新任务。
-* 本地模式（`--no-daemon`）没有排队阶段：任务创建即进入 `running`（`queued` 只在 daemon 模式出现）。
-* **孤儿任务回收**：`running` 任务的执行进程已不存在（被 kill、崩溃、机器重启）时，标记为 `failed`，`error = "process exited unexpectedly"`，`finished_at` 为回收时刻；**不从 `<output>.partial` 续跑**，`.partial` 保留供排查，需要时用 `task retry` 或 `run --retry-failed` 新建任务。
-  * 回收时机：daemon 启动时、本地模式任务开始前、`status` / `task list` / `task show` 读取前，保证 running 计数不含死任务。
-  * 存活判断同时比对 `tasks.pid` 与进程启动时间（不早于 `tasks.started_at`），避免 pid 复用误判。
-  * daemon 模式下 `tasks.pid` 为 daemon 进程：daemon 崩溃后，其全部 `running` 任务在下次启动时被回收；仍为 `queued` 的任务从未开始，daemon 启动后照常执行。
-
-定义：
-
-* `queued`：任务已提交 daemon，尚未开始。
-* `running`：处理中，支持 `progress` 实时更新。
-* `partial_success`：输出文件已产出，但存在 `failures > 0`；只在 `run` / `judge` 出现，退出码仍为 0。
-* `succeeded`：任务完成且没有业务级失败。
-* `failed`：任务本身不可恢复，通常来自配置 / IO / daemon / 参数错误。
-* `cancelled`：人工中止（`task cancel`、`stop`，或本地模式 `Ctrl-C`）。
-* `timeout`：运行时间（从 `started_at` 起算，不含排队时间）超过 `[tasks] task_timeout_secs` 被中止。`-w` 只是等待方式，CLI 侧等待中断不改变任务状态。
-
-`progress` 取值 0.0~1.0，运行期间按 [§4.3](#43-并发写口径) 节流增量更新；写入终态的**同一事务**同时写最终进度：`succeeded` / `partial_success` 写 1.0，其余终态保留最后一次进度值。终态之后不再修改 `progress`，因此短任务也不会停在 0。
+任务状态、重试、孤儿任务回收与 `partial_success` 语义详见 [data-model.md](./data-model.md#4-任务状态机必须强制执行)。
 
 ### 4.3 并发写口径
 
-* 单进程内保持**单一写连接**，所有写操作进入同一个写队列串行执行；读操作可使用独立连接，WAL 模式下读写不互斥。
-* 本地模式进程与 daemon 可能同时写同一个库：跨进程依赖 WAL + `busy_timeout`，写事务必须短小；`tasks.progress` 更新节流到每秒不超过 1 次。
-* 长任务通过写队列增量更新 `tasks.progress`，不在业务代码中直接抢连接。
-* tokio-rusqlite 为每个连接分配一个专用线程：写连接 1 个（即写队列），读连接 4 个轮转使用；async 代码只通过它们访问数据库，不在工作线程上直接执行 SQL。
+写队列、WAL、读写连接与节流口径详见 [data-model.md](./data-model.md#5-并发写口径)。
 
 ### 4.4 软删除口径
 
-`datasets` / `models` / `agents` 通过 `remove` / `update --restore` 软删除；`tasks` / `runs` 同样以 `is_remove` 标记软删除，历史记录不物理删除：
-
-* `remove` 只置 `is_remove=1`，`datasets` 额外记录 `removed_at`。
-* `update --restore` 置 `is_remove=0`；`datasets` 另清空 `removed_at`（其余表无该列）。
-* `models` / `agents` 以 `name` 为主键：对已软删除的同名项再 `add` 报 `DATASETS_E0009_INVALID_ARGS`，提示改用 `update <name> --restore`（可同时传入要修改的字段）。
-* 物理文件一律不动；`tasks` / `runs` 的 `cancelled` / `failed` / `timeout` 为任务状态，与软删除正交。
+软删除、恢复、保留历史与 `is_remove` 语义详见 [data-model.md](./data-model.md#6-软删除口径)。
 
 ***
 
@@ -673,7 +472,7 @@ running -> failed                # 孤儿任务回收：执行进程已不存在
 * jsonl / csv：本地文件走 `spawn_blocking` + `BufReader` 逐行解析，不把整文件读进内存。
 * json 是**例外**：`.json` 后缀按完整 JSON 整体读入内存解析，顶层为 JSON 数组时逐元素成行，顶层为单对象时成一行。大文件请先转为 `.jsonl`；NDJSON 请改用 `.jsonl` 后缀。
 * 对象存储没有逐行读语义：`cos://` 输入先下载到当前任务的临时目录（`~/.config/datasets/<mode>/tmp/<task_id>/`），再按本地文件解析。本地文件（含 app 目录 `data/` 下的文件）一律原地读取，不复制。
-* `--limit` 是**最终输出条数上限**，按处理顺序在 `--filter` / `--sample` / `--script` / `--sort` 之后生效（见 [§9.2](#92-一级命令总览)）。仅当未指定 `--sample` / `--script` / `--sort` 时，读取层可在命中 `--limit` 条后提前停止读取 —— 这是等价优化，不改变语义。
+* `--limit` 是**最终输出条数上限**，按处理顺序在 `--filter` / `--sample` / `--sort` 之后生效（见 [§9.2](#92-一级命令总览)）；带 `--script` 时 `--sort` / `--limit` 透传给脚本，由脚本处理（[§7.3](#73-数据筛选脚本)）。仅当未指定 `--sample` / `--script` / `--sort` 时，读取层可在命中 `--limit` 条后提前停止读取 —— 这是等价优化，不改变语义。
 * jsonl 行的原始 JSON 对象会被保留，原样回写时数字 / 布尔不会被压成字符串；csv 行写成 jsonl 时按表头顺序手工拼装，列序稳定。
 * **坏行口径**：
   * jsonl 的空行与只含空白的行跳过，跳过数写入任务日志；
@@ -726,7 +525,7 @@ running -> failed                # 孤儿任务回收：执行进程已不存在
 
 ### 6.3 表达能力边界
 
-* 表达式只支持**扁平条件的 AND 组合**，不支持 OR、NOT 组合、括号与嵌套表达式。需要 OR 语义时拆成多次 `export` / `run`，或在脚本抽样（`--script`）中实现。
+* 表达式只支持**扁平条件的 AND 组合**，不支持 OR、NOT 组合、括号与嵌套表达式。需要 OR 语义时拆成多次 `export` / `run`，或在数据筛选脚本（`--script`）中实现。
 * 单条表达式内不允许出现多个算子或空字段名；`len()` 不允许嵌套。
 * 字段名按数据实际列名匹配，不做大小写归一；列名不存在不在解析阶段报错，而是按"字段缺失 → 不匹配"口径处理（结果为空集），避免对动态 schema 产生误报。
 
@@ -741,7 +540,7 @@ running -> failed                # 孤儿任务回收：执行进程已不存在
 | `--sample 1000` | 抽 1000 条 |
 | `--sample 10%` | 抽筛选结果的 10%（四舍五入，夹到 `[0, 总数]`） |
 | `--seed <n>` | 随机种子，同 seed 可复现 |
-| `--script <PATH>` | 用脚本抽样（与 `--sample` 互斥；仅 `export` 支持） |
+| `--script <PATH>` | 用数据筛选脚本（`.js`）处理筛选结果并写出输出文件（与 `--sample` 互斥；仅 `export` 支持，见 [§7.3](#73-数据筛选脚本)） |
 
 ### 7.2 三条口径
 
@@ -751,20 +550,19 @@ running -> failed                # 孤儿任务回收：执行进程已不存在
 
 边界：筛选结果为空（总数 0）时，固定条数与百分比抽样都返回 0 条，不构造占位行。
 
-### 7.3 脚本抽样约定
+### 7.3 数据筛选脚本
 
-脚本统一放在 app 目录的 `scripts/` 下，`--script` 传文件名（如 `--script pick_hard.ts`，按 `scripts/` 解析）或该目录内的绝对路径。脚本以 **app 目录为工作目录**执行（daemon 模式与本地模式一致，与提交命令时所在目录无关），因此可以用 `data/xxx` 相对路径直接读取 app 目录的持久数据；输入数据文件的**绝对路径**作为**第一个用户参数**传入（`.ts` 中为 `process.argv[2]`，`.py` 中为 `sys.argv[1]`，可执行文件为 `argv[1]`），脚本把选中的行写到 stdout。按后缀选解释器：`.ts` 用 Node.js + app 目录本地 tsx（[§3.6](#36-app-目录与-nodejs-运行时)），`.py` 用 `uv run python`，其他按可执行文件运行。脚本退出码非 0 时整个任务失败。
+`--script <file>.js` 用数据筛选脚本代替 `--sample`，仅 `export` 支持。宿主负责读入与 `--filter`，其余处理与写出由脚本完成：
 
-输入文件口径：脚本收到的是 **`--filter` 之后**的结果（写到 `tmp/<task_id>/` 的 JSONL 文件）。只有在未指定 `--filter` 且来源为本地 jsonl 时，才直接传原文件路径（原地读取，不复制）；`cos://`、数据集 id、csv / json 来源一律先落成临时 JSONL 再传入。
+* 只支持 `.js`（ESM），须位于 app 目录 `scripts/` 下，以 app 目录为工作目录、经受限启动器执行（[§3.6](#36-app-目录与-nodejs-运行时)）；
+* 宿主先读入数据（`cos://` 先下载到本地，[§5.2](#52-格式推断与读取策略)）并执行 `--filter`，结果落成本地 JSONL，以 `--file <绝对路径>` 传给脚本；
+* `--seed` / `--sort` / `--limit` 与可重复的 `--script-arg` 原样透传给脚本，宿主不再排序、截断；
+* 脚本把结果写入宿主传入的 `--output`（最终路径加 `.partial`），正常退出后宿主原子 rename 为最终文件；宿主不校验输出内容，输出格式由脚本决定；
+* 脚本只能读 `scripts/`、`data/`、依赖与 `--file`，只能写 `--output` 这一个文件，不能起子进程，拿不到任何凭据；
+* 仅 CLI 可用，HTTP / MCP 请求带 `script` / `script_arg` 报 `DATASETS_E0009_INVALID_ARGS`；
+* 路径或后缀不合法、退出码非 0、超过 `[tasks] script_timeout_secs`、被权限模型拒绝或未写出 `--output`，任务失败并报 `DATASETS_E0014_SCRIPT`。
 
-安全边界：
-
-* `--script` 仅在本地 CLI 启用，**不对 HTTP / MCP 端点开放**（请求中带脚本参数直接报 `DATASETS_E0009_INVALID_ARGS`）。
-* 脚本**只允许位于 app 目录的 `scripts/` 下**：路径先 `canonicalize`（解析符号链接与 `..`）再判断，目录之外直接拒绝；脚本视为本机用户可信代码，不做通用沙箱与 CPU / 内存 / I/O 限制。
-* 脚本必须显式读取传入的数据文件路径并向 stdout 输出选中的 JSONL 行；注意 Node / tsx 中 `process.argv[1]` 是脚本自身路径，数据文件在 `process.argv[2]`。
-* 脚本运行超过 `[tasks] script_timeout_secs` 即终止；任何执行失败、超时或产出非 JSONL 都按 `DATASETS_E0014_SCRIPT` 处理。
-
-这条规则不追求“通用沙箱”，目标是把风险收敛到“本机用户明确授权的脚本”范围内，避免把任意代理代码变成默认执行入口。
+参数拼装、输入输出口径、类型定义、示例与运行限制见 [script-design.md §3](./script-design.md#3-数据筛选脚本)。
 
 ***
 
@@ -779,52 +577,24 @@ running -> failed                # 孤儿任务回收：执行进程已不存在
 
 `run` 不传 `--referee` 时只跑运动员；`judge` 只跑裁判员、不调用任何运动员。下文“执行者”与“运动员”同义。
 
-### 8.1 执行流程
+### 8.1 运动员执行设计
 
-```
-数据集（本地 / cos:// / 数据集 id）
-      │ ① 建执行者与裁判客户端（API Key 缺失、agent 可执行文件缺失立即失败）
-      ▼
-  ② 读首行：确定问题列、检查执行者 slug 与追加列冲突 ──✗──> DATASETS_E0009_INVALID_ARGS
-      │
-      ▼
-  ③ 读入 → --filter → --sample → --limit（顺序同 export，run 不支持 --script / --sort）
-      │
-      ▼
-  ④ 行 × 执行者格子 ──任务许可 + 资源许可（§2.1.3）──> 模型 API / agent 进程
-      │                         模型：本机 API Key + base_url 直连
-      │                         agent：exec 注入 {prompt}（不经 shell）
-      ▼
-  ⑤ 某行全部执行者格子完成 →（--referee 时）该行进入裁判评分
-      │
-      ▼
-  ⑥ 按原行序写入 <output>.partial；全部完成后原子 rename 为 <output>
-```
+运动员（执行者）相关的详细设计已拆出到独立文档 [athlete-design.md](./athlete-design.md)。主文档中保留简短入口说明：
 
-* **顺序铁律**：先建执行者客户端、再读数据。否则会出现 "读完几百 MB 才发现 API Key 没设" 的浪费。
-* **输出行序**：格子乱序完成，但输出严格保持输入行序（已完成的后序行在内存中等待前序行）。
-* **中途中断**：进程崩溃或被取消时 `<output>.partial` 保留供排查，不会冒充完整结果；不续跑，进程被 kill 后的处理见 [§4.2](#42-任务状态机必须强制执行) 孤儿任务回收。
-* 首行之后的数据行若缺问题列，该行所有执行者格子的 `error_<slug>` 写 `missing question field` 并计入 `failures`。
+- `run` 中运动员分为 `model` 与 `agent` 两类，分别通过本机 API Key / 本地 agent 命令生成答案
+- 每个运动员独立写入一族列，如 `answer_<slug>` / `reasoning_<slug>` / `error_<slug>`
+- 失败只写入该格子的错误列，不中断整轮评测
+- 评分前会进行问题列探测、列重名检查、输出列顺序控制与重试隔离
 
-#### 8.1.1 提示词与并发
-
-* `--system` / `--sp`：系统提示词（模型 system 消息；agent 不适用），可含 [§3.4](#34-模板变量) 变量，默认无。
-* `--prompt` / `--up`：用户提示词模板（模型 user 消息；agent 对应注入 `{prompt}` 的问题全文），默认即 `{question}`。
-* 并发两级控制：
-  * `--concurrency <N>`：**本任务**所有格子（行 × 执行者）的全局在途上限，默认取 `[tasks] max_concurrency`。
-  * `[[model]] max_concurrency`：**单个模型端点**的在途上限，用于防止 LLM 限流。daemon 内同一模型的所有任务（含作为裁判时）共享这一信号量；本地模式只在本进程内生效，多个 `--no-daemon` 进程并行时需自行控制。
-  * `[[agent]] max_concurrency`：同一 agent 同时运行的进程数上限，同样在 daemon 内全局共享。
-  * 许可获取顺序、退避期间释放许可、调度优先级与背压见 [§2.1](#21-任务队列与并发模型)。
+详见 [athlete-design.md](./athlete-design.md)。
 
 ### 8.2 失败隔离与重试口径
 
-单个（行 × 执行者）请求按 [§3.2](#32-配置示例) `[tasks]` 的统一配置重试；**裁判评分的模型请求（`llm` 算子、`ctx.llm()`）沿用同一套口径**，仅次数可由 `[llm] max_retries` 覆盖，退避参数一律取 `[tasks]`。重试只有这一层，脚本层不重试（[§8.7.4](#874-refereets-脚本契约)）：
+详细说明见 [athlete-design.md](./athlete-design.md)。这里仅保留核心口径：
 
-* **可重试错误**：HTTP `429`、`5xx`、连接错误 / 请求超时 / 流式中断等网络类错误。
-* **不可重试错误**：除 `429` 外的 `4xx`（鉴权失败、参数非法等），立即落 `error_<slug>`，不消耗重试次数。
-* agent 失败（超时、退出码非 0）按不可重试处理，避免重复执行带副作用的命令。
-* 退避：第 n 次重试等待 `retry_base_delay_ms × 2^(n-1)`，夹到 `retry_max_delay_ms`；`retry_jitter = true` 时叠加 ±20% 抖动。响应带 `Retry-After` 时取二者较大值（同样受 `retry_max_delay_ms` 夹限）。
-* 重试耗尽（达到 `max_retries`）只把错误写进 `error_<slug>` 列并计入 `failures`，**不中断整轮评测**，进程退出码仍为 0（见 [§11.2](#112-退出码口径)）。结果文件可用，哪些格子失败一目了然，之后用 `run --retry-failed` 只补这些格子（[§8.4](#84-输出与列命名)）。
+- 单个（行 × 运动员）请求按统一 `[tasks]` 配置重试
+- 可重试错误与不可重试错误分开处理，失败仅落到 `error_<slug>`
+- `run --retry-failed` 只重跑失败格子，成功行整行原样保留
 
 ### 8.3 问题列自动识别
 
@@ -832,448 +602,38 @@ running -> failed                # 孤儿任务回收：执行进程已不存在
 
 ### 8.4 输出与列命名
 
-* **原列保留**：输入数据的全部原始列原样保留在输出行中，顺序与类型不变（jsonl 数字 / 布尔不被压成字符串）；每个执行者（模型 / agent）追加一族 `<column>_<slug>` 列，`--referee` 评分时再追加裁判列。产物就是 "原列 + 执行者列 + 裁判列" 的宽表 JSONL。
-* **缺失值口径**：选中列族的列对每个执行者**恒写出字段** —— 请求失败时 `answer_<slug>` 等业务列置空串、错误写进 `error_<slug>`；agent 不产生 token / 费用数据，对应列置空串。不存在 "列时有时无" 的行。
-* 列命名遵循 `toFieldSlug`：注册名里的中横线 / 点号 / 空格转下划线并小写，`opus-4.6` → `answer_opus_4_6`，`simple-qa` → `score_simple_qa_...`（裁判名同样过 slug）。
-* **列名冲突即报错**（`DATASETS_E0009_INVALID_ARGS`，在读取数据前检查）：
-  * 本轮执行者 slug 必须两两不同 —— 如同时传 `gpt-5.5` 与 `gpt-5-5`，或同名的 model 与 agent，slug 相同即报错；
-  * 追加列与输入已有列重名时报错（典型场景：对上一轮输出再次 `run` 同一执行者），除非使用 `--retry-failed`。
-* **默认输出文件**：`./{name}.{date}.jsonl`（当前工作目录，与 `export` 一致；不写回源目录，避免把评测产物写进 `src-formated/`）。`{name}` 口径：数据集 id 来源取登记的数据集 `name`；本地文件 / `cos://` 来源取源文件名去扩展名。产物仅为 JSONL；需要 csv 时用 `export` 转出（`.csv` 后缀）。
+详细说明见 [athlete-design.md](./athlete-design.md)。基础约束为：
 
-`--record` 列族（评测数据集标准追加列全清单，`<slug>` = 执行者注册名过 `toFieldSlug`）。**`--record` 默认值为 `answer`**（只追加 `answer_<slug>` 族；`error_<slug>` 始终输出）：
-
-| `--record` 取值 | 产出列 |
-| --- | --- |
-| `answer` | `answer_<slug>` |
-| `reasoning` | `reasoning_<slug>` |
-| `tool_calls` | `tool_calls_<slug>`（JSON 数组文本，元素为 `{"name": "<工具名>", "arguments": <JSON 对象>}`，按模型返回顺序；无调用为空串；只有 model 运动员产出） |
-| `finish_reason` | `finish_reason_<slug>` |
-| `latency` | `latency_ms_<slug>` |
-| `usage` | `prompt_tokens_<slug>`、`cached_tokens_<slug>`、`completion_tokens_<slug>`、`reasoning_tokens_<slug>`、`total_tokens_<slug>` |
-| `throughput` | `throughput_tps_<slug>` |
-| `cost` | `cost_<slug>` |
-| `retries` | `retries_<slug>` |
-
-`error_<slug>` 列无论 `--record` 选什么都会输出；各列的指标口径见 [§8.5](#85-评测指标口径)。agent 只产出 `answer` / `latency` / `retries` / `error` 有意义的值，其余列族（`reasoning` / `tool_calls` / `finish_reason` / `usage` / `throughput` / `cost`）恒为空串。agent 的 `answer_<slug>` 为进程 **stdout 全文**（UTF-8，去掉末尾换行，不做结构化解析）；stderr 写入任务日志。
-
-裁判列（`run --referee` 或 `judge` 时追加，每个 运动员 × 裁判员 一组；`<athlete>` = 被评运动员名过 `toFieldSlug`，`run` 中即运动员的 `<slug>`；列名模板见 [§8.7.2](#872-refereetoml) `[output]`）：
-
-| 默认列名 | 说明 |
-| --- | --- |
-| `score_<referee>_<athlete>` | 总分（按 `aggregation` / `sample_aggregation` 得出） |
-| `pass_<referee>_<athlete>` | 是否及格，JSON 布尔（按 `pass_mode` 得出）；跳过或失败时为空串 |
-| `comment_<referee>_<athlete>` | 评语 |
-| `dims_<referee>_<athlete>` | 各维度分（JSON 对象文本）；仅当该裁判员 `dimensions` 非空时输出 |
-| `referee_error_<referee>_<athlete>` | 裁判请求或解析失败的错误；恒输出，成功或跳过为空串 |
-| `score_agg_<athlete>` / `pass_agg_<athlete>` | 多裁判员汇总（仅 `--aggregate` 时输出，见 [§8.6.4](#864-通用评分口径)） |
-
-每个裁判列由 `[output]` 模板渲染，模板**必须包含 `{referee}`**，因此列名自带裁判员 name 标识，多个裁判员评同一候选列也不会互相覆盖（校验见 [§8.6.2](#862-裁判员配置要素)）。
-
-**列顺序约定**：
-
-1. 原列在前，保持原始顺序；
-2. 执行者列按 `--model` / `--agent` 的传入顺序分组，组内固定顺序：`answer → reasoning → tool_calls → finish_reason → latency_ms → prompt_tokens → cached_tokens → completion_tokens → reasoning_tokens → total_tokens → throughput_tps → cost → retries → error`（只含选中的列族）；
-3. 裁判列最后，按 运动员 × 裁判员 排列（运动员顺序：`run` 为传入顺序，`judge` 为候选列在输入中的出现顺序；裁判员按 `--referee` 传入顺序），组内顺序 `score → pass → comment → dims → referee_error`。
-
-**示例表头** —— 输入列为 `id, question, lang, category`，执行 `run --model claude-opus-4-8 --record answer,reasoning,latency --referee simple-qa` 后（`simple-qa` 配置了 `dimensions`），输出行的完整字段序：
-
-```text
-id, question, lang, category,
-answer_claude_opus_4_8,
-reasoning_claude_opus_4_8,
-latency_ms_claude_opus_4_8,
-error_claude_opus_4_8,
-score_simple_qa_claude_opus_4_8,
-pass_simple_qa_claude_opus_4_8,
-comment_simple_qa_claude_opus_4_8,
-dims_simple_qa_claude_opus_4_8,
-referee_error_simple_qa_claude_opus_4_8
-```
-
-**只重跑失败的数据行（`--retry-failed`）**：
-
-* 输入必须是上一轮 `run` 的输出，且包含本轮每个执行者的 `error_<slug>` 列，否则报 `DATASETS_E0009_INVALID_ARGS`。
-* **只重跑失败的数据行**：成功行整行原样保留，不重新作答、不重新评分；只对存在失败格子的行重跑，且行内仅补 `error_<slug>` 非空的格子，成功后覆盖该执行者整族列（`error_<slug>` 置空），该行其余格子原样保留。
-* `--referee` 时，对这些行里重跑成功的格子以及 `referee_error_*` 非空的格子重新评分：重评成功后清空对应的 `referee_error_*`，启用 `--aggregate` 时按新分重算该行的 `score_agg_*` / `pass_agg_*`；跳过（答案为空）的格子不重评。
-* **重名豁免**：`--retry-failed` 允许输出评分列 / 执行者列与输入已有列同名（只覆盖失败行里的失败格子），不触发 [§8.6.4](#864-通用评分口径) 的重复打分保护与本节"列名冲突即报错"；其余行仍原样保留同名列。
-* `--record` 必须与输入中已有的列族一致；与 `--filter` / `--sample` / `--limit` 互斥，保证输出行与输入一一对应。
-* 默认输出文件为 `./{name}.{date}.jsonl`，不原地覆盖输入。
+- 原列保留、运动员列追加在最后一组之前
+- 列名按 `toFieldSlug` 规范化
+- `error_<slug>` 始终输出
+- `--record` 决定业务列族，默认值为 `answer`
 
 ### 8.5 评测指标口径
 
-| 指标 | 列名 | 口径 |
-| --- | --- | --- |
-| 耗时 | `latency_ms_<slug>` | 最后一次尝试从请求发出到完整响应返回，毫秒；不含重试前的失败尝试与退避等待 |
-| 提示 token | `prompt_tokens_<slug>` | 输入 token 数（含缓存命中部分） |
-| 缓存命中 token | `cached_tokens_<slug>` | 命中厂商上下文缓存的输入 token |
-| 生成 token | `completion_tokens_<slug>` | 输出 token 数，**已包含**推理 token |
-| 推理 token | `reasoning_tokens_<slug>` | 思维链消耗 token，是 `completion_tokens` 的子集；厂商不单列时留空 |
-| 总 token | `total_tokens_<slug>` | `prompt_tokens + completion_tokens` |
-| 吞吐 | `throughput_tps_<slug>` | `completion_tokens / (latency_ms / 1000)`，端到端口径（含首 token 等待）；非流式调用无法拆出纯生成耗时 |
-| 费用 | `cost_<slug>` | `((prompt_tokens − cached_tokens) × price_input + cached_tokens × price_cached_input + completion_tokens × price_output) / 1e6`，美元；`price_cached_input` 省略时按 `price_input`；`price_input` / `price_output` 未配置时留空 |
-| 重试次数 | `retries_<slug>` | 该格子实际触发的重试次数 |
-| 结束原因 | `finish_reason_<slug>` | 厂商返回的 stop 原因（stop / length / tool_calls 等） |
+详细说明见 [athlete-design.md](./athlete-design.md)。核心指标包括：
 
-* 各 provider 适配层负责把厂商用量字段归一到上表口径（例如推理 token 是否已计入输出 token），保证跨模型可比。
-* agent 执行者不产生 token 与费用数据，对应列留空；耗时与重试次数正常记录。
-* 首 token 延迟（`ttft_ms`）依赖流式调用，当前不提供，见附录 A.4。
+- `latency_ms_<slug>`：耗时
+- `prompt_tokens_<slug>` / `completion_tokens_<slug>` / `total_tokens_<slug>`：token
+- `cost_<slug>`：成本
+- `retries_<slug>`：重试次数
+- `error_<slug>`：失败原因
 
 ### 8.6 裁判员评分
 
-#### 8.6.1 两种入口
+> 详细设计已独立整理到 [referee-design.md](./referee-design.md)。本节保留概要入口，主文档避免过长。
 
-| 入口 | 被评运动员从哪来 | 候选答案列 | 典型场景 |
-| --- | --- | --- | --- |
-| `run --referee <name,...>` | 本轮 `--model` / `--agent` 的全部运动员 | 本轮刚写出的 `answer_<slug>` | 跑完运动员顺手打分 |
-| `judge --referee <name,...>` | 按裁判员 `candidate_pattern` 从输入列名中**自动发现**，可用 `--athlete` 限定 | 输入数据中已有的答案列 | 数据里已经有多个模型的答案（来自别的工具或历史 run），只需打分回写 |
+裁判员评分为 `run` / `judge` 阶段新增的评分能力：对每个 行 × 运动员 × 裁判员 格子独立评估，输出 `score_*`、`pass_*`、`comment_*`、`dims_*` 与 `referee_error_*` 列。
 
-两种入口共用同一套裁判员配置、评分口径与输出列；`--referee` 都可选多个；**一次任务评测同一个数据集、选中多个裁判员时，各裁判员 `[input]` 段必须完全一致**（含 `candidate_pattern`），因此所有裁判员共用同一批运动员、同一套读取列与同一个问题列，运动员集合即 `--aggregate` 的汇总范围（校验见 [§8.6.2](#862-裁判员配置要素)）。`run --referee` 不做列名发现，但 `[input]` 一致性校验同样生效（`candidate_pattern` 虽不参与评分，也要求一致，便于同一份配置在 `run` / `judge` 间复用）。选中 `enabled = false` 的裁判员直接报 `DATASETS_E0015_REFEREE`，不静默跳过（避免输出列随开关变化）。`run --referee` 按行流水线进行：某行所有运动员格子完成后，该行立即进入评分。
+关键能力：
 
-#### 8.6.2 裁判员配置要素
+- `run --referee`：对本轮新生成的答案立刻打分
+- `judge --referee`：从输入列中自动发现候选答案并回评分
+- 支持两种算子：`llm`（纯配置）和 `script`（自定义脚本）
+- 支持多个裁判员并行评估，每个裁判员独立输出自己的评分列
+- 失败只写 `referee_error_*`，不中断任务，不污染执行者的 `error_*`
 
-裁判员的全部配置都在其目录的 `referee.toml` 中（完整示例见 [§8.7.2](#872-refereetoml)），下表按段说明：
-
-| 分类 | `referee.toml` 配置项 | 说明 |
-| --- | --- | --- |
-| 标识与开关 | 目录名 / `description` / `enabled` / `version` | 名称即目录名（不得为保留字 `agg`）、测量目标说明、启用开关、裁判员自身版本号 |
-| 裁判算子 | `operator` | 决定怎么打分：`llm`（纯配置，由裁判模型按 prompt 打分）或 `script`（由 `referee.ts` 实现任意逻辑，可经宿主调用裁判模型）。算子参数放在同名段 `[llm]` / `[script]` 中 |
-| 读取列 | `[input]`：`question_field` / `reference_field` / `context_field` / `candidate_pattern` / `reasoning_field` | 问题、参考答案、上下文、候选答案匹配规则、思维链。配置 `reference_field` 即参考式评测，否则为无参考评测 |
-| 裁判模型与请求 | `[llm]`：`model` / `temperature` / `max_tokens` / `timeout_secs` / `max_retries` / `samples` / `response_format` | 裁判模型（单个已注册 model）、采样与超时、重试、self-consistency 采样次数、结构化输出方式。`script` 算子调用 `ctx.llm()` 时同样使用这些默认值 |
-| 评分标准与 prompt | `[llm]`：`criteria` / `evaluation_steps`；目录文件 `system.md` / `prompt.md` / `few_shot.jsonl` | 自由文本标准、显式评分步骤（G-Eval 式）、system 消息、提示词模板、少样本示例 |
-| 脚本 | `[script]`：`entry` / `timeout_secs` / `workers` / `concurrency` / `allow_models` / `env` | `script` 算子的入口与运行参数；**脚本层不重试**，模型请求的重试由宿主统一处理（[§8.7.4](#874-refereets-脚本契约)） |
-| 自定义参数 | `[params]` | 任意键值，原样传给 `referee.ts`（如阈值、关键词表） |
-| 分值口径 | `[score]`：`min` / `max` / `strict` / `dimensions` / `weights` / `aggregation` / `sample_aggregation` / `pass_mode` / `pass_threshold` / `[[score.bands]]` | 分值范围、二元判定、维度与权重、总分来源、多次采样聚合、及格判定方式、结构化评分分带 |
-| 写入列 | `[output]`：`score_field` / `pass_field` / `comment_field` / `dims_field` / `error_field` | 评分结果列名模板（每个模板必须含 `{referee}`，使裁判列自带裁判 name 标识） |
-
-**配置校验**（加载裁判员时执行，失败报 `DATASETS_E0015_REFEREE`；`dataset referee check` 可提前检查）：
-
-* `min < max`；`strict = true` 时**裁判返回的原始 `score`** 只允许 `min` / `max`，`pass_threshold` 固定为 `max`；由程序聚合得出的总分不受端点约束（[§8.6.4](#864-通用评分口径)）。
-* `pass_threshold` 在 `[min, max]` 内；`bands` 各区间在 `[min, max]` 内且互不重叠。
-* `weights` 的键必须与 `dimensions` 完全一致，值非负且总和大于 0（按总和归一）；`aggregation = "weighted_mean"` 时 `weights` 必填，`aggregation` 为 `weighted_mean` / `mean` 时 `dimensions` 必须非空。
-* `samples >= 1`；`samples > 1` 且 `temperature = 0` 时输出 warn（多次采样结果基本相同，浪费请求）。
-* `few_shot.jsonl` 每条的 `score` 在 `[min, max]` 内；`prompt.md` 中出现的变量必须是 [§3.4](#34-模板变量) 中已定义的变量。
-* `[output]` 的 5 个列名模板**必须包含 `{referee}`**，使每个裁判输出的列都带上裁判 name 标识；渲染后列名必须两两不同，且不与 `score_agg_*` / `pass_agg_*` 及输入已有列重名（`--retry-failed` 时豁免重名，见 [§8.6.4](#864-通用评分口径)）。
-* `operator = "llm"` 时 `[llm] model` 与 `prompt.md`（或 `[llm] prompt_template`）必填；`operator = "script"` 时 `[script] entry` 指向的文件必须存在，且 `[script] timeout_secs` 必须覆盖 `ctx.llm()` 的完整耗时（不小于 `[llm] timeout_secs × (1 + 生效重试次数)`）；`[llm] model` 与 `[script] allow_models` 中的名称必须是已注册且未软删除的 model。
-
-**任务级校验**（`run --referee` / `judge` 提交时执行，失败同样报 `DATASETS_E0015_REFEREE`）：
-
-* 选中 ≥ 2 个裁判员时，各裁判员 `[input]` 段（`question_field` / `reference_field` / `context_field` / `candidate_pattern` / `reasoning_field`）必须逐项一致，缺项视为一致；`[score]` / `[llm]` / `[output]` 等其他段允许不同（分值区间不同由 [§8.6.4](#864-通用评分口径) 的归一化汇总处理）。
-
-#### 8.6.3 候选答案列发现（`judge`）
-
-以输入列 `id, question, reference, answer_deepseek-v4-pro, answer-glm-5, reasoning_deepseek-v4-pro, lang` 为例，默认 `candidate_pattern = '^answer[_-](?P<athlete>.+)$'`：
-
-| 列 | 是否候选 | 运动员名（`{athlete}`） | 写入列 slug |
-| --- | --- | --- | --- |
-| `answer_deepseek-v4-pro` | 是 | `deepseek-v4-pro` | `deepseek_v4_pro` |
-| `answer-glm-5` | 是 | `glm-5` | `glm_5` |
-| `question` / `reference` / `lang` / `reasoning_deepseek-v4-pro` | 否 | — | — |
-
-* 只按列名匹配，读取首行确定候选列；不带后缀的 `answer`（标准 schema 里的标准答案）不会被当成候选。需要把它作为参考答案时，配置 `reference_field = "answer"`。
-* `--athlete <name,...>` 只评指定的运动员；名称两侧都过 `toFieldSlug` 后比较，`glm-5` / `glm_5` 等价。不传时评全部候选。
-* 读取列（`reasoning_field`、`error_<athlete>` 等）按模板渲染后，与输入列名**两侧都过 `toFieldSlug` 比较**，因此 `reasoning_deepseek-v4-pro` 与 `reasoning_deepseek_v4_pro` 都能匹配；规范化后匹配到多列时报 `DATASETS_E0009_INVALID_ARGS`。
-* 两个候选列规范化后得到相同运动员 slug（如 `answer_glm-5` 与 `answer-glm_5`）时报 `DATASETS_E0009_INVALID_ARGS`；没有发现任何候选列时同样报错，并列出全部列名。
-* 输入原列名**原样保留**，不做改名；只有新写入的评分列使用下划线 slug。
-* `run --referee` 不做列名发现，候选列固定为本轮运动员的 `answer_<slug>`；`candidate_pattern` 对 `run` 不生效。
-
-#### 8.6.4 通用评分口径
-
-以下口径与算子无关，`llm` 与 `script` 一致；算子只负责对单个格子产出 [评分结果](#874-refereets-脚本契约)，其余由宿主统一处理。一次任务选中多个裁判员时，各裁判员 `[input]` 一致（[§8.6.2](#862-裁判员配置要素)），因此共用同一批运动员、同一套读取列与同一个问题列。
-
-* 对每个 行 × 运动员 × 裁判员 格子独立评分；各运动员互不可见。
-* 问题列优先级（run / judge 一致）：CLI `--question-field` > 裁判员 `[input] question_field` > [§8.3](#83-问题列自动识别) 自动探测；`run` 未传 `--question-field` 且裁判员未配置时沿用本轮问题列（即自动探测结果）。
-* **评分结果**统一为 JSON：
-
-  ```json
-  {"score": 8, "pass": true, "comment": "...", "dimensions": {"correctness": 9, "completeness": 7, "reasoning": 8}}
-  ```
-
-  `pass` 仅在 `pass_mode = "judge"` 时必需；`dimensions` 仅在配置了维度时必需。
-* **结果校验**：缺少必需字段、分值越出 `[min, max]`、`strict = true` 时**裁判返回的原始 `score`** 不是 `min` / `max`，都视为该次评分失败（可重试）。`strict` 只约束裁判原始分，程序按维度或多次采样聚合出的总分不受端点约束，因此 `strict` 可与 `weighted_mean` / `mean` / `samples > 1` 自由组合，不需要额外限制。
-* **总分计算**（`aggregation`）：`judge` 直接采用裁判的 `score`；`weighted_mean` 由程序按 `weights` 对 `dimensions` 加权平均（忽略裁判给的 `score`，避免总分与维度分自相矛盾）；`mean` 为维度等权平均。
-* **多次采样**（`samples > 1`）：同一格子独立请求 `samples` 次，总分按 `sample_aggregation`（mean / median）聚合，维度分逐维取均值；以**与聚合总分最接近的那次采样**作为代表，其 `comment`（以及 `pass_mode = "judge"` 时的 `pass`）写入结果。任一次失败按重试口径处理，重试耗尽的次数不参与聚合，全部失败才算该格子失败。
-* **及格判定**（`pass_mode`）：`threshold` 由程序按**最终聚合总分** `score >= pass_threshold` 一次性计算；`judge` 采用代表采样的 `pass`。结果写入 `pass_<referee>_<athlete>`。不按多次采样的 `pass` 投票，避免出现"聚合分及格但 `pass = false`"。
-* 结果按 `[output]` 列名模板写入（`{referee}` / `{athlete}` 渲染后过 `toFieldSlug`）。模板必须含 `{referee}`（[§8.6.2](#862-裁判员配置要素) 校验），因此写入列自带裁判员 name 标识，多个裁判员评同一候选列也不会互相覆盖。
-* **失败隔离与重试**：重试只有一层 —— 模型请求（运动员、`llm` 算子、`ctx.llm()`）按 [§8.2](#82-失败隔离与重试口径) 的统一口径由宿主重试，`[llm] max_retries` 可覆盖次数，退避参数一律取 `[tasks]`；**脚本层不重试**，`judge()` 抛异常直接判该格子失败（[§8.7.4](#874-refereets-脚本契约)）。单格评分失败只写 `referee_error_<referee>_<athlete>` 并计入 `failures`，**不写**运动员的 `error_<slug>`，也不中断本轮评分。
-* **跳过**：候选答案为空串 / 缺失，或输入中存在该运动员的 `error_<athlete>` 列且非空时，跳过该格子，裁判列置空串，不计入 `failures`，计入 `task show` 的跳过数。
-* **重复打分保护**：输出评分列与输入已有列重名（例如对同一份数据用同一裁判员再跑一次 `judge`）时报 `DATASETS_E0009_INVALID_ARGS`。`--retry-failed` 是唯一豁免：**只重跑失败的数据行**，成功行整行原样保留、不重新评分；只重评这些行中 `referee_error_*` 非空的格子，重评成功后清空该 `referee_error_*`，`--aggregate` 时按新分重算该行的汇总列，其余格子与其余行原样保留（细则见 [§8.4](#84-输出与列命名)）。
-* **统计**：`task show` 对每个 运动员 × 裁判员 输出评分数、跳过数、失败数、平均分、及格率（`pass = true` 的占比）与各维度均分。
-* **多裁判员汇总**（`--aggregate mean|median`，需选 ≥ 2 个裁判员）：运动员集合为 `[input]` 一致校验后统一发现的候选列（`--athlete` 可限定），所有裁判员评同一批运动员；对每个运动员追加 `score_agg_<athlete>` 与 `pass_agg_<athlete>`，位于该运动员全部裁判列之后。各裁判员分值先按 `(score − min) / (max − min)` 归一到 `[0, 1]` 再按 mean / median 聚合，因此不同分值区间的裁判员可以一起汇总；`pass_agg` 在两种模式下都按多数票（平票为 false），与分数的聚合方式无关。参与汇总的只有评分成功的裁判员，全部失败或跳过时两列为空串。
-* 本轮使用的裁判员配置快照（目录哈希、`referee.toml` 与 prompt 文本，[§8.7.6](#876-加载记录与可追溯)）写入 `runs.referees`，被评运动员名单记录进 `runs.athletes`；运动员执行统计写 `runs.athlete_stats`，本轮评分统计与裁判 token / 费用写 `runs.referee_stats`（[§4.1](#41-表结构)），`task show` 从这两列读取。
-
-#### 8.6.5 `llm` 算子
-
-* **prompt 组装**：`system.md`（若有）作为 system 消息；`prompt.md` 渲染后作为 user 消息。`{steps}` / `{bands}` / `{examples}` 分别由 `[llm] evaluation_steps`、`[[score.bands]]`、`few_shot.jsonl` 渲染，未配置时为空串。`prompt.md` 与 `[llm] prompt_template` 二选一，同时存在时报 `DATASETS_E0015_REFEREE`。
-* **输出格式**：`response_format = "json_schema"` 时优先用厂商结构化输出（JSON Schema 由 `[score]` 自动生成），厂商不支持时降级为 `json_object`，再不支持降级为 `prompt`；`prompt` 方式由程序在 user 消息末尾追加格式约束。返回内容解析为 [§8.6.4](#864-通用评分口径) 的评分结果，JSON 解析失败视为该次评分失败（可重试）。
-
-#### 8.6.6 `judge` 示例
-
-输入行（已含两个模型的答案）：
-
-```json
-{"id": "q1", "question": "1+1=?", "reference": "2", "answer_deepseek-v4-pro": "2", "answer-glm-5": "3", "lang": "en"}
-```
-
-执行：
-
-```bash
-dataset judge --data src-sampling/eval/eval-answers.jsonl --referee simple-qa --wait
-```
-
-输出行（原列原样保留，追加评分列；`simple-qa` 配置了 `dimensions`、`reference_field = "reference"`）：
-
-```text
-id, question, reference, answer_deepseek-v4-pro, answer-glm-5, lang,
-score_simple_qa_deepseek_v4_pro, pass_simple_qa_deepseek_v4_pro, comment_simple_qa_deepseek_v4_pro, dims_simple_qa_deepseek_v4_pro, referee_error_simple_qa_deepseek_v4_pro,
-score_simple_qa_glm_5, pass_simple_qa_glm_5, comment_simple_qa_glm_5, dims_simple_qa_glm_5, referee_error_simple_qa_glm_5
-```
-
-### 8.7 裁判员目录
-
-裁判员不写在 `config.toml` 里：**每个裁判员是一个独立目录**，目录名即裁判员名。新增裁判员 = 新建一个目录；修改裁判员 = 改目录里的文件，无需改主配置、无需 restart daemon。
-
-#### 8.7.1 目录结构
-
-```
-~/.config/datasets/prod/                    app 目录 = 裁判员脚本工作目录（§3.6）
-├─ package.json / node_modules/             所有裁判员共享的依赖（自动创建，pnpm 安装）
-├─ runtime/referee.d.ts                     类型声明（程序托管，经 @datasets/referee 引用）
-├─ data/                                    持久数据：裁判员直接读取（如 data/math-answers.jsonl），不复制
-└─ referee/                                 裁判员根目录（固定位置）
-   ├─ _shared/                              下划线开头的目录不视为裁判员，用于放公共代码（如 utils.ts）
-   ├─ simple-qa/                            裁判员 simple-qa（operator = "llm"，纯配置）
-   │  ├─ referee.toml                       必需：配置
-   │  ├─ prompt.md                          llm 算子的 user 提示词模板
-   │  ├─ system.md                          可选：system 消息
-   │  ├─ few_shot.jsonl                     可选：少样本示例
-   │  └─ README.md                          可选：说明（referee show 时展示）
-   └─ math-exact/                           裁判员 math-exact（operator = "script"）
-      ├─ referee.toml                       必需：配置
-      ├─ referee.ts                         script 算子入口：实现评分逻辑
-      └─ prompt.md                          可选：脚本可经 ctx.render() 渲染
-```
-
-* 裁判员名 = 目录名，必须匹配 `^[a-z0-9][a-z0-9_-]*$`，且不得为保留字 `agg`；写入列名时过 `toFieldSlug`（`simple-qa` → `simple_qa`）。
-* 扫描时只认 `referee/` 下含 `referee.toml` 的一级子目录；不含 `referee.toml` 或以 `_` / `.` 开头的目录忽略。
-* 裁判员根目录**固定为 app 目录的 `referee/`**，不支持配置额外根目录：Node.js 按脚本文件所在位置向上解析 `node_modules`，裁判员放在 app 目录之外会找不到共享依赖。团队共享裁判员时，可把 `referee/` 本身作为 Git 仓库克隆 / 管理。
-* 裁判员目录只放配置、prompt 与代码；**体量大的数据**（参考答案库、题库、词表）放 app 目录 `data/`，脚本以 `data/xxx` 相对路径直接读取，或经 `ctx.dataDir` 取绝对路径。
-
-#### 8.7.2 `referee.toml`
-
-`referee.toml` 是裁判员的唯一配置文件，各段含义见 [§8.6.2](#862-裁判员配置要素)。以 `llm` 算子为例：
-
-```toml
-description = "参考式 QA 正确性评分"     # 测量什么（referee list / task show 中展示）
-enabled = true                          # 是否启用；false 时被 --referee 选中直接报 E0015，referee list 默认不展示
-operator = "llm"                        # llm | script
-version = "1.0.0"                       # 裁判员自身版本（展示与快照用，不参与逻辑）
-
-[input]                                 # 读取：从数据行取什么（多裁判员时该段必须逐项一致，§8.6.2）
-# question_field = "question"           # 问题列；省略时按 §8.3 顺序自动探测
-reference_field = "reference"           # 参考答案列（可选）；配置即为参考式评测，省略即为无参考评测；单行缺失时 {reference} 渲染为空串
-# context_field = "context"             # 上下文列（可选，RAG 场景的检索文档等）
-candidate_pattern = '^answer[_-](?P<athlete>.+)$'  # 候选答案列匹配规则（judge 用），命名组 athlete 即被评运动员名
-reasoning_field = "reasoning_{athlete}" # 被评运动员的思维链列（可选；列不存在时 {reasoning} 渲染为空串）
-
-[llm]                                   # 裁判模型与请求参数（llm 算子必填；script 算子作为 ctx.llm() 的默认值）
-model = "deepseek-v4-pro"               # 裁判模型（引用单个已注册 model name）
-temperature = 0.0                       # 采样温度
-max_tokens = 2048                       # 裁判输出 token 上限
-timeout_secs = 120                      # 单次评分请求超时；省略时沿用裁判模型的 timeout_secs（默认 300），此时需相应加大 [script] timeout_secs
-max_retries = 2                         # 重试次数；省略时回退 [tasks] max_retries
-samples = 1                             # 同一格子采样评分次数（self-consistency）
-response_format = "json_schema"         # json_schema | json_object | prompt
-criteria = "判断候选答案是否与参考答案一致，并检查推理是否完整"  # 评分标准，渲染为 {criteria}
-evaluation_steps = [                    # 显式评分步骤（G-Eval 式），渲染为 {steps}
-  "对照参考答案，判断候选答案的最终结论是否正确",
-  "检查候选答案是否遗漏题目要求的关键信息",
-  "检查思维链是否存在与结论矛盾的步骤",
-  "依据评分分带给出总分与各维度分",
-]
-# prompt_template = "..."               # 内联模板，与 prompt.md 二选一（推荐用 prompt.md）
-
-[score]                                 # 分值口径
-min = 0
-max = 10
-strict = false                          # true 时为二元判定：只允许 min / max
-dimensions = ["correctness", "completeness", "reasoning"]
-weights = { correctness = 0.6, completeness = 0.2, reasoning = 0.2 }  # 维度权重（可选），按总和归一
-aggregation = "judge"                   # judge | weighted_mean | mean
-sample_aggregation = "mean"             # samples > 1 时：mean | median；总分聚合后统一判定 pass，不按 pass 投票
-pass_mode = "threshold"                 # threshold（score >= pass_threshold）| judge（采用评分结果中的 pass）
-pass_threshold = 6
-
-[[score.bands]]                         # 结构化评分分带（可选），渲染为 {bands}
-range = [9, 10]
-descriptor = "结论正确，信息完整，推理无瑕疵"
-
-[[score.bands]]
-range = [6, 8]
-descriptor = "结论正确，但有遗漏或推理瑕疵"
-
-[[score.bands]]
-range = [0, 5]
-descriptor = "结论错误或答非所问"
-
-[output]                                # 写入：评分结果列名模板（必须含 {referee}，渲染后过 toFieldSlug）
-score_field = "score_{referee}_{athlete}"
-pass_field = "pass_{referee}_{athlete}"
-comment_field = "comment_{referee}_{athlete}"
-dims_field = "dims_{referee}_{athlete}"
-error_field = "referee_error_{referee}_{athlete}"
-```
-
-`script` 算子在此基础上改 `operator = "script"` 并增加：
-
-```toml
-[script]
-entry = "referee.ts"                    # 入口文件（相对裁判员目录），默认 referee.ts
-timeout_secs = 600                      # 单个格子 judge() 的超时（含其中的 ctx.llm 调用及其重试）；须 >= [llm] timeout_secs × (1 + 生效重试次数)
-workers = 1                             # 每个任务为该裁判员启动的脚本进程数
-concurrency = 8                         # 每个进程同时处理的格子数上限
-allow_models = ["deepseek-v4-pro", "gpt-5-5"]  # ctx.llm() 可指定的 model 白名单；省略时只允许 [llm] model
-env = []                                # 透传给脚本进程的 env 名白名单（默认只透传 PATH / HOME / LANG）
-# 脚本层不重试：judge() 抛异常直接判格子失败；模型请求（含 ctx.llm）的重试由宿主按 [llm]/[tasks] 统一处理
-
-[params]                                # 自定义参数，原样作为 ctx.params 传给脚本
-tolerance = 1e-6
-normalize = ["strip", "lowercase"]
-answers_file = "data/math-answers.jsonl"   # 文件路径按 app 目录解析，脚本直接读取，程序不复制
-```
-
-#### 8.7.3 prompt 与 few-shot 文件
-
-| 文件 | 作用 | 格式 |
-| --- | --- | --- |
-| `prompt.md` | user 消息模板 | 纯文本 / Markdown，支持 [§3.4](#34-模板变量) 变量；整份文件即模板 |
-| `system.md` | system 消息 | 同上，可选 |
-| `few_shot.jsonl` | 少样本示例，渲染为 `{examples}` | 每行一个对象：`question` / `reference` / `answer` / `score` 必填，`comment` / `dimensions` 可选 |
-
-`prompt.md` 示例：
-
-```markdown
-问题：{question}
-参考答案：{reference}
-候选答案：{answer}
-思维链：{reasoning}
-
-评分标准：{criteria}
-评分步骤：
-{steps}
-评分分带：
-{bands}
-评分维度：{dimensions}
-
-示例：
-{examples}
-```
-
-把 prompt 与示例拆成独立文件，便于 diff、评审与复用；`script` 算子也可通过 `ctx.render("prompt.md", vars)` 使用同一套模板渲染。
-
-#### 8.7.4 `referee.ts` 脚本契约
-
-`script` 算子把"怎么打分"交给 `referee.ts`，宿主（Rust）负责其余一切：候选列发现、跳过、重试、并发、结果校验、总分与 pass 计算、写列、统计。脚本**不接触 API Key**：需要调用裁判模型时经 `ctx.llm()` 由宿主代发。
-
-```ts
-// referee/math-exact/referee.ts（工作目录为 app 目录）
-import { readFile } from "node:fs/promises";
-import type { Referee, JudgeInput, JudgeContext, JudgeResult } from "@datasets/referee";
-
-let answers = new Map<string, string>();
-
-export default {
-  // 可选：每个脚本进程启动后调用一次，用于加载 data/ 下的参考答案库、词表、预编译正则等
-  async init(ctx) {
-    const text = await readFile(ctx.params.answers_file as string, "utf8");  // 即 data/math-answers.jsonl，原地读取
-    for (const line of text.split("\n").filter(Boolean)) {
-      const { id, answer } = JSON.parse(line);
-      answers.set(id, answer);
-    }
-  },
-
-  // 必需：对单个格子（行 × 运动员）评分
-  async judge(input: JudgeInput, ctx: JudgeContext): Promise<JudgeResult> {
-    const expected = input.reference || answers.get(input.row_id) || "";
-    if (!expected) throw new Error("参考答案缺失");   // 脚本层不重试，抛异常即该格子失败
-    const exact = normalize(input.answer) === normalize(expected);
-    if (exact) return { score: 10, pass: true, comment: "与参考答案完全一致" };
-
-    // 规则判不了时，交给裁判模型
-    const res = await ctx.llm({
-      messages: [{ role: "user", content: await ctx.render("prompt.md", input) }],
-      response_format: "json_object",
-    });
-    return res.json as JudgeResult;
-  },
-} satisfies Referee;
-```
-
-类型定义在 app 目录的 `runtime/referee.d.ts`（程序托管，随 CLI 版本更新），经 `tsconfig.json` 路径别名以 `@datasets/referee` 引用；`import type` 在运行时被 tsx 擦除，不产生运行时依赖：
-
-| 类型 | 字段 |
-| --- | --- |
-| `JudgeInput` | `row_id`、`row_index`、`athlete`（运动员名）、`question`、`answer`、`reference`、`context`、`reasoning`（未配置或缺失为 `""`）、`row`（整行原始对象，只读） |
-| `JudgeContext` | `referee`（裁判员名）、`refereeDir`（裁判员目录绝对路径）、`appDir`（app 目录绝对路径，即工作目录）、`dataDir`（app 目录 `data/` 绝对路径）、`params`（`[params]` 原样）、`score`（`[score]` 配置）、`llm(req)`、`render(file, vars)`（`file` 相对裁判员目录）、`fewShot`（`few_shot.jsonl` 解析结果）、`log(msg)`（写任务日志） |
-| `LlmRequest` | `messages`（必填）、`model`（须在 `allow_models` 内，默认 `[llm] model`）、`temperature` / `max_tokens` / `response_format`（默认取 `[llm]`） |
-| `LlmResponse` | `text`、`json`（`response_format` 为 JSON 时的解析结果，否则 `null`）、`usage`、`latency_ms` |
-| `JudgeResult` | 即 [§8.6.4](#864-通用评分口径) 的评分结果：`score` 必填，`pass` / `comment` / `dimensions` 按 `[score]` 配置必填或可选 |
-
-约定：
-
-* 脚本的**工作目录是 app 目录**：相对路径都按 app 目录解析，`data/xxx` 即持久数据；引用同一裁判员目录内的文件请用 `ctx.refereeDir` 或 `import.meta.dirname` 拼路径。
-* `judge()` 必须是纯函数式的"输入 → 结果"，不写数据文件、不依赖格子之间的执行顺序（宿主会并发、乱序调用）；`data/` 只读使用，大文件在 `init()` 中加载一次即可。
-* **脚本层不重试**：`judge()` 抛出任何异常 → 该格子失败，写 `referee_error_*`；重试只发生在宿主的模型请求层 —— `ctx.llm()` 内部按 [§8.2](#82-失败隔离与重试口径) 的统一口径（`[llm] max_retries` 覆盖次数、`[tasks]` 退避参数）完成，脚本不必、也不能自己重试。
-* 返回值不满足 [§8.6.4](#864-通用评分口径) 的结果校验时，按评分失败处理。
-* `console.log` 等输出会被重定向到任务日志（`logs/<task_id>.log`），不会干扰通信。
-* `ctx.llm()` 的 token 用量与费用计入任务统计（`task show` 中按裁判员汇总）。
-
-#### 8.7.5 运行时与通信协议
-
-* 每个任务为每个 `script` 裁判员启动 `[script] workers` 个常驻脚本进程（不是每格一个进程），任务结束即退出。
-* 启动方式：宿主把内置的引导脚本 `referee-runner.ts` 与 `referee.d.ts` 写到 app 目录 `runtime/`（版本变化时覆盖），先按 [§3.6](#36-app-目录与-nodejs-运行时) 确保 `package.json` 与依赖就绪，再在 **app 目录**下执行 `node_modules/.bin/tsx runtime/referee-runner.ts referee/<name>/referee.ts`（Node.js + 本地 tsx，不经 npx）；引导脚本负责加载用户模块、重定向 console、收发消息。
-* 通信：stdin / stdout 上按行分隔的 JSON-RPC 2.0，双向请求：
-
-  | 方向 | method | 说明 |
-  | --- | --- | --- |
-  | 宿主 → 脚本 | `init` | `params`: `{referee, params, score, few_shot}` |
-  | 宿主 → 脚本 | `judge` | `params`: `JudgeInput`；返回 `JudgeResult` 或 `{"error": {"message"}}`（脚本层不重试） |
-  | 脚本 → 宿主 | `llm` | `params`: `LlmRequest`；宿主按 model 的并发信号量、重试与超时代发，返回 `LlmResponse` |
-  | 脚本 → 宿主 | `render` / `log` | 模板渲染（与 `llm` 算子同一套渲染器）/ 写任务日志 |
-
-* 每个进程同时在途的 `judge` 不超过 `[script] concurrency`；格子超过 `[script] timeout_secs` 未返回即判失败。
-* 脚本进程异常退出：在途格子按失败处理（写 `referee_error_*`），宿主自动重启该进程并可重新派发该格子，同一任务内累计重启 3 次后任务失败（`DATASETS_E0015_REFEREE`）。
-* Node.js / pnpm 缺失或依赖安装失败在任务提交时预检，报 `DATASETS_E0016_NODE_RUNTIME`；`dataset referee check` 与 `dataset runtime status` 同样会检查。
-* 只支持 Node.js + tsx，deno / bun 等其他运行时暂不支持。
-
-#### 8.7.6 加载、记录与可追溯
-
-* **现读现用**：裁判员目录在**每次任务提交时**读取与校验，不在 daemon 启动时缓存；新增、修改、删除裁判员目录对下一个任务立即生效。
-* **不复制文件**：裁判员目录与 `data/` 都原地读取，程序不做快照副本。任务开始时把 `referee.toml`、prompt 文件与 `few_shot.jsonl` 读入内存，脚本进程在任务开始时一次性加载模块；任务运行期间改动这些文件不影响本任务：`referee.toml` / prompt / few-shot 始终用内存中的副本。脚本进程崩溃需要重启时，先重算裁判员目录哈希：与任务开始时一致则重启；不一致说明运行期间代码被改动，**不加载新代码**，任务以 `DATASETS_E0015_REFEREE` 失败（已完成的格子保留在 `<output>.partial`），保证一个任务内只使用一份裁判员代码。
-* **记录**：`runs.referees` 记录每个裁判员的 `{name, version, hash, toml, prompt}`。`hash` 为裁判员目录（以及 `referee/_shared/`）内文件相对路径与内容的 sha256（前 12 位），排除 `.` 开头的文件与目录（如 `.git/`、`.DS_Store`）和 `node_modules/`，因此把 `referee/` 作为 Git 仓库管理不会让哈希随每次提交变化；`data/` 不在裁判员目录内，不参与哈希；`toml` / `prompt` 是任务开始时读到的文本，体积小，足以追溯"当时用的是什么配置与提示词"。
-* **数据文件不纳入哈希**：`data/` 下的数据由用户自行管理版本（如在文件名中带日期或版本号）；裁判员通过 `[params]` 引用的数据文件路径会随 `toml` 一并记录。
-* `task retry` 使用裁判员目录的**当前版本**重跑；当前 `hash` 与原任务记录不一致时输出 warn，提示结果可能与原任务不可比。
-
-#### 8.7.7 安全边界
-
-* `referee.ts` 是在本机执行的代码，信任模型与 `--script` 一致：**只执行 app 目录 `referee/` 下的裁判员**，路径先 `canonicalize` 再判断，指向该目录之外的符号链接直接拒绝。
-* HTTP / MCP 只能**按名称选择**已有裁判员，不能创建、修改或上传裁判员目录。
-* 脚本进程不继承 daemon 的完整环境：只透传 `PATH` / `HOME` / `LANG` 与 `[script] env` 白名单中的变量；模型 API Key 永远不进入脚本进程，调用模型只能经 `ctx.llm()`，且受 `allow_models` 限制。
-* 不做 CPU / 内存 / 网络沙箱，裁判员目录视为本机用户可信代码。
-
-#### 8.7.8 新增一个裁判员
-
-```bash
-dataset referee new strict-qa --from simple-qa      # 复制已有裁判员为模板
-dataset referee new math-exact --operator script    # 生成 script 骨架：referee.toml + referee.ts；首次会自动创建 app 目录 package.json 并 pnpm install
-# 编辑 ~/.config/datasets/prod/referee/math-exact/ 下的文件；参考答案库放到 ~/.config/datasets/prod/data/
-cd ~/.config/datasets/prod && pnpm add mathjs       # 需要第三方包时装到 app 目录（所有裁判员共享）
-dataset referee check math-exact                    # 校验配置、TypeScript 7 类型检查（tsc --noEmit -p tsconfig.json）、预检 Node.js / pnpm 与依赖
-dataset referee check math-exact --data src-sampling/eval/eval-answers.jsonl --limit 3
-                                                    # 试跑 3 行，打印每个格子的评分结果，不写文件
-dataset judge --data src-sampling/eval/eval-answers.jsonl --referee math-exact --wait
-```
-
-***
+详细设计、目录结构、配置项、评分口径、通信协议与安全边界，均在 [referee-design.md](./referee-design.md) 中。
 
 ## 9. 命令面
 
@@ -1293,7 +653,7 @@ dataset [-c/--config <path>] [--mode dev|prod] [--json] [-s/--summary] [-v...] [
 | `-w, --wait` | 任务命令（import / export / run / judge / task retry）同步等到完成再返回；等待中 `Ctrl-C` 只中断等待、不取消任务。本地模式本就同步执行，`-w` 无副作用；其他命令传入由 clap 直接报参数错误 |
 | `--no-daemon` | 本地模式：任务在当前进程执行，不连接也不拉起 daemon；等价环境变量 `DATASETS_NO_DAEMON=1` |
 
-**多值参数统一写法**：`--tag` / `--model` / `--agent` / `--referee` / `--athlete` / `--filter` / `--sort` 均可重复传入；其中 `--tag` / `--model` / `--agent` / `--referee` / `--athlete` 也接受逗号分隔，`--tag a,b` 等价于 `--tag a --tag b`。
+**多值参数统一写法**：`--tag` / `--model` / `--agent` / `--referee` / `--athlete` / `--filter` / `--sort` / `--script-arg` 均可重复传入；其中 `--tag` / `--model` / `--agent` / `--referee` / `--athlete` 也接受逗号分隔，`--tag a,b` 等价于 `--tag a --tag b`。
 
 ### 9.2 一级命令总览
 
@@ -1321,7 +681,7 @@ dataset [-c/--config <path>] [--mode dev|prod] [--json] [-s/--summary] [-v...] [
 
 **处理顺序**：
 
-* `export`：读入 → `--filter` → `--sample` 或 `--script` → `--sort` → `--limit` → 写出。
+* `export`：读入 → `--filter` → `--sample` → `--sort` → `--limit` → 写出。带 `--script` 时：读入（`cos://` 先下载到本地）→ `--filter` → 数据筛选脚本（`--seed` / `--sort` / `--limit` / `--script-arg` 透传，由脚本处理并写出 `--output`）→ 宿主 rename 为最终文件（[§7.3](#73-数据筛选脚本)）。
 * `run`：读入 → `--filter` → `--sample` → `--limit` → 运动员作答 →（`--referee`）裁判员评分 → 写出。
 * `judge`：读入 → 发现候选答案列（`--athlete` 限定）→ `--filter` → `--sample` → `--limit` → 裁判员评分 → 写出。
 
@@ -1336,11 +696,12 @@ dataset [-c/--config <path>] [--mode dev|prod] [--json] [-s/--summary] [-v...] [
 | `export <data>` | `<data>` | 是 | 数据集 id、本地文件或 `cos://` |
 |  | `--format <jsonl\|json\|csv>` | 否 | 输入格式；无扩展名时必填（[§5.2](#52-格式推断与读取策略)） |
 |  | `--filter <EXPR>` | 否 | 可重复，多个条件取 AND；语法见 [§6](#6-筛选表达式--filter) |
-|  | `--sample <N\|N%>` + `--seed <N>` | 否 | 随机抽样；同一 seed 结果可复现 |
-|  | `--script <PATH>` | 否 | 用脚本抽样，和 `--sample` 互斥；脚本须位于 app 目录 `scripts/`（可只写文件名），以 app 目录为工作目录执行，数据文件绝对路径以参数传入（[§7.3](#73-脚本抽样约定)） |
-|  | `--sort <FIELD[:asc\|desc]>` | 否 | 可重复，按传入顺序作多级排序。比较类型按**整列**判定：该字段在所有非缺失行上都能解析为数字时按数值比较，否则整列按文本逐字符比较；字段缺失的行无论升降序都排在最后；稳定排序。`FIELD` 与方向以最后一个 `:` 分隔（仅当后缀为 `asc` / `desc`），字段名词法同 [§6.1](#61-语法) |
-|  | `--limit <N>` | 否 | 最终输出条数上限 |
-|  | `--output <PATH>` / `--overwrite` | 否 | 省略时为 `./{name}.{date}.jsonl`；`.csv` 后缀写 csv；仅支持本地路径，暂不支持 `cos://` |
+|  | `--sample <N\|N%>` + `--seed <N>` | 否 | 随机抽样；同一 seed 结果可复现。带 `--script` 时 `--seed` 透传给脚本 |
+|  | `--script <PATH>` | 否 | 用数据筛选脚本处理 `--filter` 之后的数据并写出 `--output`，和 `--sample` 互斥；只支持 `.js`，须位于 app 目录 `scripts/`（传相对 `scripts/` 的路径或该目录内的绝对路径），以 app 目录为工作目录执行；输入以 `--file <本地 JSONL 绝对路径>` 传入（`cos://` 先下载），输出写到宿主传入的 `--output <最终路径>.partial`，成功后由宿主 rename（[§7.3](#73-数据筛选脚本)） |
+|  | `--script-arg <ARG>` | 否 | 可重复，须与 `--script` 同用；每个值作为一个参数元素按顺序追加在宿主参数之后，值可以以 `-` 开头（推荐 `--script-arg=--key=value`）；不得使用宿主保留的 `--file` / `--output` / `--seed` / `--sort` / `--limit` |
+|  | `--sort <FIELD[:asc\|desc]>` | 否 | 可重复，按传入顺序作多级排序。比较类型按**整列**判定：该字段在所有非缺失行上都能解析为数字时按数值比较，否则整列按文本逐字符比较；字段缺失的行无论升降序都排在最后；稳定排序。`FIELD` 与方向以最后一个 `:` 分隔（仅当后缀为 `asc` / `desc`），字段名词法同 [§6.1](#61-语法)。带 `--script` 时原样透传给脚本，宿主不排序 |
+|  | `--limit <N>` | 否 | 最终输出条数上限；带 `--script` 时原样透传给脚本，宿主不截断 |
+|  | `--output <PATH>` / `--overwrite` | 否 | 省略时为 `./{name}.{date}.jsonl`；`.csv` 后缀写 csv；仅支持本地路径，暂不支持 `cos://`。带 `--script` 时由脚本写出，格式由脚本决定 |
 | `list` | `--tag` / `--name`（模糊匹配） | 否 | 筛选 |
 |  | `--all` | 否 | 包含已移除的数据集 |
 |  | `--sort` / `--limit` | 否 | 默认按 `updated_at` 倒序，取 50 条 |
@@ -1360,12 +721,10 @@ dataset [-c/--config <path>] [--mode dev|prod] [--json] [-s/--summary] [-v...] [
 |  | `--system`（`--sp`）/ `--prompt`（`--up`） | 否 | 系统 / 用户提示词模板，见 [§8.1.1](#811-提示词与并发) |
 |  | `--concurrency <N>` | 否 | 本任务格子在途上限，默认取 `[tasks] max_concurrency`（[§8.1.1](#811-提示词与并发)） |
 |  | `--record <list>` | 否 | 追加列族，默认 `answer`；见 [§8.4](#84-输出与列命名) |
-|  | `--referee <name,...>` | 否 | 按裁判员目录名选择裁判员，对候选答案打分，见 [§8.6](#86-裁判员评分) / [§8.7](#87-裁判员目录) |
-|  | `--aggregate <mean\|median>` | 否 | 多裁判员汇总，需 `--referee` 选 ≥ 2 个；追加 `score_agg_*` / `pass_agg_*` |
+|  | `--referee <name,...>` | 否 | 按裁判员目录名选择裁判员，对候选答案逐条打分，见 [§8.6](#86-裁判员评分) / [§8.7](#87-裁判员目录) |
 |  | `--retry-failed` | 否 | 输入为上一轮 run 输出时，**只重跑失败的数据行**（成功行整行原样保留，行内仅补失败格子）；与 `--filter` / `--sample` / `--limit` 互斥（[§8.4](#84-输出与列命名)） |
 | `judge` | `--data <file\|id\|cos://>` / `--format` | 是 / 否 | 数据源，须已含运动员答案列 |
 |  | `--referee <name,...>` | 是 | 选择裁判员，可多个（[§8.6](#86-裁判员评分)） |
-|  | `--aggregate <mean\|median>` | 否 | 同 run |
 |  | `--athlete <name,...>` | 否 | 只评指定运动员；不传时评 `candidate_pattern` 发现的全部候选（[§8.6.3](#863-候选答案列发现judge)） |
 |  | `--question-field <FIELD>` | 否 | 覆盖问题列；优先级（run / judge 一致）：本参数 > 裁判员 `[input] question_field` > 自动探测（[§8.6.4](#864-通用评分口径)） |
 |  | `--filter` / `--sample` / `--seed` / `--limit` | 否 | 和 export 含义相同 |
@@ -1384,20 +743,20 @@ dataset [-c/--config <path>] [--mode dev|prod] [--json] [-s/--summary] [-v...] [
 | `agent list` / `remove <name>` / `check [name...]` | — | — | `check` 检查可执行文件和版本；`list --all` 包含已移除项 |
 | `referee list` | `--all` | 否 | 列出 app 目录 `referee/` 下的裁判员：名称、operator、description、version、enabled、当前 hash、校验是否通过；`--all` 含 `enabled = false` 的 |
 | `referee show <name>` | — | — | 展示解析后的 `referee.toml`、目录文件清单、当前 hash 与 README |
-| `referee new <name>` | `--operator llm\|script` / `--from <name>` | 否 | 在 app 目录 `referee/` 下生成裁判员骨架；`--from` 复制已有裁判员；`script` 骨架会先确保 app 目录 `package.json` 与依赖就绪；目标已存在时报错 |
-| `referee check [name...]` | `--data <file\|id\|cos://>` / `--limit <N>`（默认 3）/ `--athlete` | 否 | 不传 name 时检查全部；校验配置、模型引用、运行时与脚本类型（`script` 算子执行 `tsc --noEmit -p tsconfig.json`，TypeScript 7）；带 `--data` 时试跑前 N 行并打印评分结果，不写文件、不建任务 |
+| `referee new <name>` | `--operator llm\|script` / `--from <name>` | 否 | 在 app 目录 `referee/` 下生成裁判员骨架；`--from` 复制已有裁判员；`script` 骨架生成带 `// @ts-check` 与 JSDoc 类型标注的 `referee.js`，并先确保 app 目录 `package.json` / `tsconfig.json` / `runtime/` 就绪、安装类型检查依赖；目标已存在时报错 |
+| `referee check [name...]` | `--data <file\|id\|cos://>` / `--limit <N>`（默认 3）/ `--athlete` | 否 | 不传 name 时检查全部；校验配置、模型引用、`[script]` 段、越界符号链接、运行时与脚本类型（`script` 算子执行 `tsc --noEmit -p tsconfig.json`，对 `.js` 做 JSDoc 类型检查）；带 `--data` 时经受限启动器试跑前 N 行并打印评分结果，不写文件、不建任务 |
 | `start` / `restart` | `--http <ADDR>` | 否 | 默认读配置 `[daemon] http`（prod `127.0.0.1:7070`，dev `127.0.0.1:7071`）；手动启动的 daemon 不空闲退出 |
 |  | `--foreground` | 否 | 前台运行，用于调试 |
 | `stop` | `--timeout <秒>` / `--force` | 否 | 先优雅退出（running / queued 任务按 cancelled 收尾），超时后强制；未运行时直接成功 |
 | `status` | — | — | 运行状态、pid、运行时长、版本、HTTP 地址；数据集数（有效 / 已移除）、总行数与体积；任务数（运行 / 排队 / 失败）；模型与 agent 数量 |
 | `mcp` | — | — | stdio 入口，经 IPC 连接常驻服务，daemon 未运行时自动拉起；streamable-http 由 daemon HTTP 的 `/mcp` 提供 |
 | `task list` | `--status` / `--limit` | 否 |  |
-| `task show <id>` | — | — | run 任务展示每个运动员的成功 / 失败数、平均耗时、token 与费用合计；有裁判员时（run / judge）展示每个 运动员 × 裁判员 的评分数、跳过数、失败数、平均分与及格率 |
+| `task show <id>` | — | — | run 任务展示每个运动员的成功 / 失败数、平均耗时、token 与费用合计；有裁判员时（run / judge）展示每个 运动员 × 裁判员 的评分数、跳过数、失败数与通过率（仅用于当前样本的评分状态，不对整份数据集做汇总） |
 | `task logs <id>` | `--follow` | 否 | 读取 `logs/<task_id>.log`；`--follow` 持续跟随运行中的任务 |
 | `task cancel <id>` | — | — | 只作用于 daemon 任务，不拉起 daemon；queued / running → cancelled |
 | `task retry <id>` | — | — | 按原 params 新建任务（`retry_of` 指向原任务），使用裁判员目录当前版本，hash 与原任务不一致时 warn；与其他任务命令一样提交 daemon（自动拉起），`--no-daemon` 时当前进程执行 |
-| `runtime status` | — | — | 展示 app 目录、Node.js / pnpm / TypeScript 版本（低于 7 时提示）、`package.json` 是否存在、依赖是否已安装且与哈希一致 |
-| `runtime install` | `--force` | 否 | 立即创建缺失的 `package.json` / `tsconfig.json` / `runtime/` 并执行 `pnpm install`；`--force` 忽略哈希强制重装 |
+| `runtime status` | — | — | 展示 app 目录、Node.js 版本（是否满足 ≥ 22.13、是否拦截网络即 ≥ 25）、pnpm / TypeScript 版本、`package.json` / `tsconfig.json` / `runtime/` 状态、`dependencies` 是否为空、依赖是否已安装且与哈希一致 |
+| `runtime install` | `--force` | 否 | 立即创建缺失的 `package.json` / `tsconfig.json` / `runtime/` 并执行 `pnpm install`（含类型检查依赖）；`--force` 忽略哈希强制重装 |
 | `config` | `--open` | 否 | 展示生效配置（脱敏）及配置文件与 SQLite 不一致的注册项；`--open` 按 `$VISUAL`、`$EDITOR` 顺序选编辑器，配置文件不存在时先生成默认文件 |
 
 ### 9.4 命令示例
@@ -1407,6 +766,8 @@ dataset [-c/--config <path>] [--mode dev|prod] [--json] [-s/--summary] [-v...] [
 dataset import raw/math.jsonl --tag math --tag en --overwrite
 dataset export ds_1a2b3c --filter "lang = 'zh'" --sample 1000 --seed 42 \
     --sort "difficulty:desc" --output out/zh-1k.jsonl
+dataset export ds_1a2b3c --filter "lang = 'zh'" --limit 500 --script pick_hard.js \
+    --script-arg=--ids=data/hard-ids-v2.json --output out/zh-hard.jsonl
 dataset list --tag math --limit 20
 dataset list --all
 dataset add src-formated/normalized/PolyMath.jsonl --name polymath --tag math
@@ -1426,7 +787,7 @@ dataset run --data out/run.jsonl --model claude-opus-4-8,gpt-5-5 --retry-failed 
 # 裁判员（对已有答案列打分）
 dataset judge --data src-sampling/eval/eval-answers.jsonl --referee simple-qa
 dataset judge --data src-sampling/eval/eval-answers.jsonl --referee simple-qa,strict-qa \
-    --athlete deepseek-v4-pro,glm-5 --aggregate median --output out/judged.jsonl --wait
+    --athlete deepseek-v4-pro,glm-5 --output out/judged.jsonl --wait
 dataset judge --data out/judged.jsonl --referee simple-qa,strict-qa --retry-failed \
     --output out/judged.retry.jsonl
 
@@ -1496,7 +857,6 @@ dataset config --open
     "data": "/Users/me/datasets/src-sampling/eval/eval-answers.jsonl",
     "referee": ["simple-qa", "strict-qa"],
     "athlete": ["deepseek-v4-pro", "glm-5"],
-    "aggregate": "median",
     "output": "/Users/me/datasets/out/judged.jsonl"
   }
 }
@@ -1518,7 +878,7 @@ dataset config --open
 | — | `/mcp` | MCP streamable-http |
 
 * HTTP 与 IPC 请求中的本地路径**必须是绝对路径**，相对路径报 `DATASETS_E0009_INVALID_ARGS`（服务端无法得知调用方的工作目录）。
-* 注册项（model / agent）的写操作 v1 不对 HTTP / MCP 开放，只能经 CLI 修改；`--script` 同样不开放（[§7.3](#73-脚本抽样约定)）；裁判员只能按名称选择，不能经 HTTP / MCP 创建或修改（[§8.7.7](#877-安全边界)）。
+* 注册项（model / agent）的写操作 v1 不对 HTTP / MCP 开放，只能经 CLI 修改；`--script` / `--script-arg` 同样不开放（[§7.3](#73-数据筛选脚本)）；裁判员只能按名称选择，不能经 HTTP / MCP 创建或修改（[script-design.md §4.9](./script-design.md#49-安全边界)）。
 
 **MCP tools**：`status`、`dataset_list`、`dataset_add`、`dataset_export`、`dataset_run`、`dataset_judge`、`task_list`、`task_show`、`task_cancel`、`model_list`、`agent_list`、`referee_list`。参数与对应 CLI 命令一致，任务类 tool 只提交、不阻塞，返回 `task_id`。
 
@@ -1553,7 +913,7 @@ dataset export  out/run.retry.jsonl \
 # 输入列：question, reference, answer_deepseek-v4-pro, answer-glm-5, ...
 dataset judge   --data src-sampling/eval/eval-answers.jsonl --referee simple-qa \
     --output out/judged.jsonl --wait
-dataset task show <task_id>          # 每个 运动员 × 裁判员 的平均分与及格率
+dataset task show <task_id>          # 每个 运动员 × 裁判员 的评分状态与通过率
 # 回流：取 glm-5 被判及格的行
 dataset export  out/judged.jsonl --filter "pass_simple_qa_glm_5 = true" \
     --output src-sampling/eval/glm-5-pass.jsonl
@@ -1582,9 +942,9 @@ CLI 失败统一输出 `error [<code>]: <message>` 到 stderr，退出码 1。**
 | `DATASETS_E0011_NOT_FOUND` | 引用的数据集 / 模型 / agent / 裁判员（`referee/` 下无同名目录）/ 存储桶（cos 桶）/ 任务不存在 |
 | `DATASETS_E0012_DAEMON` | daemon 自动拉起 / 启动超时、连接失败、版本不一致且有任务在跑、`auto_start = false` 时需要 daemon 但未运行，或 HTTP 鉴权不通过（401） |
 | `DATASETS_E0013_AGENT` | agent 执行失败（`agent check` 等同步调用场景） |
-| `DATASETS_E0014_SCRIPT` | `--script` 抽样脚本执行失败、超时或输出非 JSONL |
-| `DATASETS_E0015_REFEREE` | 裁判员存在但不可用：`referee.toml` 校验失败、`enabled = false` 却被选中、入口脚本缺失、运行中被改动、脚本进程反复崩溃（按名称找不到裁判员报 E0011）（单格评分失败只写列，不报此码） |
-| `DATASETS_E0016_NODE_RUNTIME` | Node.js 运行时不可用：找不到 `node` 或版本低于 20.11、找不到 `pnpm`、app 目录 `pnpm install` 失败 |
+| `DATASETS_E0014_SCRIPT` | `--script` 数据筛选脚本：后缀不是 `.js`、文件不存在、路径或符号链接越出 app 目录；执行失败、超时、被权限模型拒绝（`ERR_ACCESS_DENIED`）或正常退出但未写出 `--output` |
+| `DATASETS_E0015_REFEREE` | 裁判员存在但不可用：`referee.toml` 校验失败、`enabled = false` 却被选中、`script` 算子缺少 `referee.js` 或含越界符号链接、`[script]` 段校验失败、脚本进程启动握手或 `init()` 失败、重启时发现目录已被改动（按名称找不到裁判员报 E0011）（单格评分失败与运行中熔断只写列，不报此码） |
+| `DATASETS_E0016_NODE_RUNTIME` | Node.js 运行时不可用：找不到 `node` 或版本低于 22.13；需要安装依赖时找不到 `pnpm` 或 app 目录 `pnpm install` 失败 |
 | `DATASETS_E9998_NOT_IMPLEMENTED` | 功能未实现（见 [§12](#12-实施计划)） |
 | `DATASETS_E9999_OTHER` | 兜底 |
 
@@ -1652,10 +1012,10 @@ CLI 失败统一输出 `error [<code>]: <message>` 到 stderr，退出码 1。**
 | 1 | 平台骨架 | config loading + env 凭据 + SQLite 迁移（写 1 + 读 4 连接）+ 错误码 + 本地模式任务记录与日志 + tokio 运行时线程配置 + `CancellationToken` 取消骨架 | `dataset config` / `status` / `task list` / `task show` 可用 | 本地模式执行一个占位任务，能看到 `running -> succeeded/failed` 并写出日志；成功任务 `progress = 1.0`；kill 掉执行进程后，`status` 不再计入该任务、任务被回收为 `failed`；app 目录在 macOS 上落在 `~/.config/datasets/` |
 | 2 | registry | model / agent / dataset 注册、seed、软删除与恢复 | `model add` / `agent add` / `dataset add` / `list` 可用 | 能注册并持久化；软删除后同名 add 报 E0009，`--restore` 可恢复 |
 | 3 | 数据读与筛选 | 解析本地 / cos / dataset-id，支持 `--filter` 和 `--limit` | `export` 读数据 | 能把 1 万条 JSONL 读入并过滤出符合条件行；空行被跳过、非法行报 E0003 带行号；`answer-glm-5 != ''` 这类带连字符的字段名可正确筛选；`--sort` 在数值与文本混合列上结果稳定 |
-| 4 | 导出与抽样 | `--sample` / `--script` / 排序输出 | `export` 输出稳定 JSONL | 同 seed 重跑得到完全相同行序 |
+| 4 | 导出与抽样 | `--sample` / `--script` + `--script-arg`（数据筛选脚本与 Node 受限启动器，[script-design.md §2](./script-design.md#2-公共约定) / [§3](./script-design.md#3-数据筛选脚本)）/ 排序输出 | `export` 输出稳定 JSONL | 同 seed 重跑得到完全相同行序；`.js` 筛选脚本在无 `node_modules`、无 pnpm 时也能运行；`cos://` 输入先下载、`--filter` 后以 `--file` 传入，`--seed` / `--sort` / `--limit` / `--script-arg` 按约定顺序透传；脚本只能写 `--output` 的 `.partial`，失败时最终文件保持原样；非 `.js` 后缀、读 `config.toml`、写其他路径、未写出 `--output` 均报 E0014 且错误信息带原因 |
 | 5 | 执行器层 | 模型客户端 + agent 调用 + 格子流水线（任务许可、模型 / agent 全局信号量、令牌桶、429 冷却、按行号优先调度、重排窗口背压、取消流程，[§2.1.3](#213-格子并发与资源许可run--judge) ~ [§2.1.5](#215-取消超时与关闭)）+ `--retry-failed` | `run --model` / `--agent` | 结果文件追加列稳定、行序与输入一致，失败单格落 `error_<slug>`，`--retry-failed` 只重跑失败的数据行（行内补失败格子）；10 万行输入时进程内存不随行数增长；退避期间不占并发许可；Ctrl-C 后 `.partial` 为完整前缀行；agent 的 `answer` 为 stdout 全文，其余列族为空串；单价未配置时 `cost_*` 列存在且为空串 |
-| 6a | 裁判员（llm） | 裁判员目录扫描与 `referee.toml` 校验、目录哈希记录、`llm` 算子（结构化输出、评分步骤、分带、few-shot、加权总分、多次采样、及格判定）、`run --referee`、`judge`（候选列发现、`--athlete`、`--retry-failed`）、`--aggregate`、`referee list / show / new / check` | 裁判列产出 | 新建裁判员目录后无需 restart 即可 `judge --referee` 选中；对含 `answer_xxx` / `answer-xxx` 混合列名的数据生成 score / pass / comment 列；`weighted_mean` 总分与维度分一致；裁判失败只写 `referee_error_*`；多裁判员 `[input]` 不一致或 `[output]` 模板缺 `{referee}` 报 E0015；`--retry-failed` 只重跑失败的数据行且豁免评分列重名；`strict` 与 `weighted_mean` 组合时聚合分正常产出 |
-| 6b | 裁判员（script） | app 目录 `package.json` / `tsconfig.json` 自动创建与 pnpm 自动安装、`runtime status / install`、`referee-runner.ts` 引导脚本、JSON-RPC 双向协议、`ctx.llm` 代发、进程重启、`referee.d.ts` 类型 | `script` 算子可用 | 空 app 目录首次 `judge` 能自动生成 `package.json` 并装好依赖；`referee.ts` 能以 `data/xxx` 相对路径读取持久数据；脚本进程拿不到任何 API Key；运行中改动裁判员文件不影响本任务，脚本进程重启时检测到改动则任务失败、不加载新代码；脚本层不重试（`ctx.llm()` 的重试由宿主统一处理），`[script] timeout_secs` 覆盖 `ctx.llm()` 完整耗时 |
+| 6a | 裁判员（llm） | 裁判员目录扫描与 `referee.toml` 校验、目录哈希记录、`llm` 算子（结构化输出、评分步骤、分带、few-shot、维度分与最终分、多次采样、及格判定）、`run --referee`、`judge`（候选列发现、`--athlete`、`--retry-failed`）、`referee list / show / new / check` | 裁判列产出 | 新建裁判员目录后无需 restart 即可 `judge --referee` 选中；对含 `answer_xxx` / `answer-xxx` 混合列名的数据生成 score / pass / comment 列；最终分与维度分按配置一致；裁判失败只写 `referee_error_*`；多裁判员 `[input]` 不一致或 `[output]` 模板缺 `{referee}` 报 E0015；`--retry-failed` 只重跑失败的数据行且豁免评分列重名；`strict` 与维度权重组合时最终分正常产出 |
+| 6b | 裁判员（script） | app 目录 `package.json` / `tsconfig.json` 自动创建与按需 pnpm 安装、`runtime/`（`referee-runner.mjs` 与 `types/*.d.ts`）托管、`runtime status / install`、JSON-RPC 双向协议（握手、取消、卡死检测、崩溃重派与熔断）、`ctx.llm` 代发（[script-design.md §4](./script-design.md#4-裁判员脚本)） | `script` 算子可用 | 空 app 目录且未装 pnpm 时，无第三方依赖的 `referee.js` 首次 `judge` 即可运行；`referee new --operator script` 生成的骨架在编辑器中有完整类型提示，`referee check` 能报出 JSDoc 类型错误；`referee.js` 能以 `data/xxx` 读取持久数据，读 `config.toml`、写文件、起子进程均被拒；脚本进程环境中没有任何 API Key；脚本 `console.log` 不破坏协议；同步死循环的格子超时后 worker 被杀并重启，同进程其他在途格子重派一次；连续崩溃达 `max_crashes` 后该裁判员熔断、任务以 `partial_success` 结束；运行中改动裁判员文件不影响本任务，脚本进程重启时检测到改动则任务失败、不加载新代码；脚本层不重试（`ctx.llm()` 的重试由宿主统一处理），`[script] timeout_secs` 覆盖 `ctx.llm()` 完整耗时；daemon 被 `kill -9` 后不残留 node 进程 |
 | 7 | daemon 与服务端 | 自动拉起（文件锁、就绪等待、版本对齐、空闲退出）、start / stop / restart、任务队列（io / eval 两条车道、持久化 FIFO、输出路径互斥、排队任务凭据）、IPC 凭据携带、HTTP、MCP、鉴权 | daemon 全链路跑通 | daemon 未运行时直接 `run` 能自动拉起并经历 `queued -> running -> 终态`；两个终端同时提交只拉起一个 daemon；eval 车道占满时 export 仍能立即开始；两个 run 任务共用同一模型时总在途请求不超过该模型 `max_concurrency`；无 token 时不开 HTTP，错误 token 返回 401；`daemon.pid` 正确反映 `auto_started`，只有自动拉起的 daemon 会空闲退出；IPC 方法与 [§9.5](#95-服务接口ipc--http--mcp) 全表一致 |
 | 8 | 交付收口 | output / status / CLI docs / smoke test | release-ready 简单 smoke | `cargo test` + 关键 CLI 样例通过 |
 
@@ -1689,24 +1049,24 @@ CLI 失败统一输出 `error [<code>]: <message>` 到 stderr，退出码 1。**
    * **裁判员共享与分发**：目前通过把 app 目录 `referee/` 作为 Git 仓库管理来共享；是否支持按单个裁判员从 Git 仓库或打包文件安装（如 `referee install <url>`）；
    * **评分方式**：当前每个候选独立评分（pointwise）；是否需要把同一题的多个候选放进一个 prompt 做对比评分 / 排序（pairwise、listwise），以及配套的 `win / tie / loss` 输出列与位置偏置缓解（交换顺序双向评测）；
    * **Agent 轨迹评测**：是否读取 `tool_calls_<athlete>` 等工具调用轨迹列，对 agent 运动员的过程打分；
-   * **裁判 prompt**：是否支持按题型 / 语种在同一裁判员内选择不同模板（如 `prompt.zh.md` / `prompt.en.md`），目前可在 `referee.ts` 中自行选择；
-   * **裁判可靠性**：是否内置裁判一致性校验（同题多次评分方差、与人工标注的一致率），当前只能靠 `samples` 与多裁判员 `--aggregate` 间接缓解。
+   * **裁判 prompt**：是否支持按题型 / 语种在同一裁判员内选择不同模板（如 `prompt.zh.md` / `prompt.en.md`），目前可在 `referee.js` 中自行选择；
+   * **裁判可靠性**：是否内置裁判一致性校验（同题多次评分方差、与人工标注的一致率），当前只能靠 `samples` 与多裁判员并行评分间接缓解。
 
 已决议（移入正文）：
 
 * 默认 daemon 模式，需要时自动拉起（文件锁互斥、版本对齐、空闲退出），凭据随任务经 IPC 携带；`--no-daemon` 为本地模式（[§3.3](#33-运行模式与-daemon-交互)）。
 * `[[model]]` / `[[agent]]` 以 SQLite 为准，配置文件只做首次 seed（[§3.2](#32-配置示例)）。
 * 并发三层：任务层（daemon 持久化队列，io / eval 两条车道）、格子层（任务许可）、资源层（模型 / agent 全局信号量与令牌桶，跨任务共享）；格子流水线有界、按行号优先、退避释放许可（[§2.1](#21-任务队列与并发模型)）。
-* 裁判员脚本类型检查使用 TypeScript 7（`tsc --noEmit -p tsconfig.json`，显式 `"types": ["node"]`、不用 `baseUrl`），运行时由 tsx 执行（[§3.6](#36-app-目录与-nodejs-运行时)）。
+* 脚本只支持 ESM 格式的 `.js`（数据筛选脚本与裁判员脚本一致），由 Node.js（≥ 22.13）直接执行；类型定义随 CLI 写入 `runtime/types/`，编写期用 JSDoc 引用，`tsc --noEmit -p tsconfig.json`（`allowJs` + `checkJs`，显式 `"types": ["node"]`、不用 `baseUrl`）只做类型检查（[script-design.md §2](./script-design.md#2-公共约定)）。
 * 任务终态不可变，重试新建任务并以 `retry_of` 关联（[§4.2](#42-任务状态机必须强制执行)）。
 * 进程被 kill 后不续跑：遗留 `running` 任务由孤儿任务回收标记为 `failed`，`.partial` 只供排查（[§4.2](#42-任务状态机必须强制执行)，原附录 A.6，阶段 1 门禁）。
 * agent 答案为 stdout 全文，不做结构化解析；agent 的 `tool_calls` 等列族恒为空串（[§8.4](#84-输出与列命名)，原附录 A.5，阶段 5 门禁）。
 * `cos://` 输入下载到 `~/.config/datasets/<mode>/tmp/<task_id>/` 再解析，启动时清扫孤儿临时文件；`data/` 为持久数据目录，程序不写、不复制、不清理（[§5.3](#53-临时文件生命周期与兜底)）。
-* 所有脚本（`--script`、`referee.ts`）统一以 app 目录为工作目录，`.ts` 用 Node.js + app 目录本地 tsx 执行，app 目录自动生成 `package.json` 并用 pnpm 安装依赖（[§3.6](#36-app-目录与-nodejs-运行时)）。
-* `--script` 不设沙箱与资源限制：须位于 app 目录 `scripts/`，过滤后的数据文件路径以参数传入（[§7.3](#73-脚本抽样约定)）。
-* 裁判员以目录管理，不进 config.toml、不进 SQLite：app 目录 `referee/<name>/` 下放 `referee.toml` + `referee.ts` + `prompt.md` 等，任务提交时现读，不复制文件，只记录目录哈希与配置文本；`script` 算子经 JSON-RPC 由宿主代发模型请求，脚本不接触 API Key（[§8.7](#87-裁判员目录)）。
+* 所有脚本（`--script`、`referee.js`）统一以 app 目录为工作目录，经 Node 受限启动器执行（`--permission` + 最小读权限 + env 白名单 + 进程组），仅在声明了运行期依赖时才用 pnpm 安装（[script-design.md §2.5](./script-design.md#25-受限启动器)）。
+* `--script` 不设 CPU / 内存限制：须位于 app 目录 `scripts/`；宿主执行 `--filter` 后把结果落成本地 JSONL，以 `--file` 传入，`--seed` / `--sort` / `--limit` / `--script-arg` 原样透传，脚本自行写出 `--output`（[script-design.md §3](./script-design.md#3-数据筛选脚本)）。
+* 裁判员以目录管理，不进 config.toml、不进 SQLite：app 目录 `referee/<name>/` 下放 `referee.toml` + `referee.js` + `prompt.md` 等，任务提交时现读，不复制文件，只记录目录哈希与配置文本；`script` 算子经 JSON-RPC 由宿主代发模型请求，脚本不接触 API Key（[referee-design.md](./referee-design.md)、[script-design.md §4](./script-design.md#4-裁判员脚本)）。
 * 每个裁判员的默认裁判模型为单值 `[llm] model`；需要多个模型评分时配置多个裁判员，`script` 算子可在 `allow_models` 内按需选模型。
-* 裁判员字段对齐业界 LLM-as-a-judge（DeepEval G-Eval、promptfoo llm-rubric、Prometheus）：参考答案与上下文、显式评分步骤、结构化评分分带、维度权重与总分聚合、显式 `pass` 列、结构化输出、few-shot、多次采样与多裁判员汇总（[§8.6](#86-裁判员评分)、[§8.7.2](#872-refereetoml)）。
+* 裁判员字段对齐业界 LLM-as-a-judge（DeepEval G-Eval、promptfoo llm-rubric、Prometheus）：参考答案与上下文、显式评分步骤、结构化评分分带、维度权重与每条样本的最终分输出、显式 `pass` 列、结构化输出、few-shot、多次采样与多裁判员并列评分（[§8.6](#86-裁判员评分)、[§8.7.2](#872-refereetoml)）。
 * 裁判员可脱离 `run` 独立运行：`judge` 按 `candidate_pattern` 从列名发现候选答案列，列名比较两侧都过 `toFieldSlug`，兼容中横线写法（[§8.6.3](#863-候选答案列发现judge)）。裁判失败写独立的 `referee_error_*` 列（[§8.6](#86-裁判员评分)）。
 
 ***

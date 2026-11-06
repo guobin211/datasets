@@ -6,7 +6,7 @@ rust-version = "1.91"
 authors = ["michaelbguo"]
 license = "UNLICENSED"
 description = "datasets 本地评测 CLI + lib：数据集变换 / 本地与 COS 传输 / 本机 API Key 模型评测 / 结果回流"
-# lib 随项目一起发布；发布渠道（crates.io / 内部 registry）待定，见 docs/datasets-cli.md 附录 A
+# lib 随项目一起发布；发布渠道（crates.io / 内部 registry）待定，见 docs/cli.md 附录 A
 publish = false
 
 [lib]

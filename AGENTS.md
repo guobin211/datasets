@@ -176,10 +176,10 @@ cargo check
 
 ## Rust 本地 CLI
 
-完整技术方案见 `docs/datasets-cli.md`。CLI 只负责本地数据准备、评测与结果流转，不承担 messages 分桶。
+完整技术方案见 `docs/cli.md`。CLI 只负责本地数据准备、评测与结果流转，不承担 messages 分桶。
 
 ```bash
-# 登记与导出（命令面以 docs/datasets-cli.md §9 为准）
+# 登记与导出（命令面以 docs/cli.md §9 为准）
 dataset add src-formated/normalized/PolyMath.jsonl --name polymath --tag math
 dataset export ds_1a2b3c --filter "lang = 'zh'" --sample 1000 --seed 42 \
   --output src-sampling/eval/poly-math-zh-1k.jsonl
